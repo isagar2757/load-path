@@ -4,6 +4,7 @@
     uv run python run_demo.py --reset             # interactive: Approve, Reject and Stop come from the page
     uv run python run_demo.py --reset --auto      # no page: the human actions go through the same server routes
     uv run python run_demo.py --reset --auto --llm
+    uv run python run_demo.py --reset --llm --pause   # live demo: Enter starts each agent section
 
 Amounts are assumptions and the two proposed condition ratings are MOCK input (README). The orchestrator's turn
 loop asks each agent for its next step; every domain write goes through `guarded_call`. Exits 1 when a beat differs from the script.
@@ -74,6 +75,7 @@ def main() -> None:
     p.add_argument("--llm", action="store_true", help="agents pick from code-built options and write the rationale")
     p.add_argument("--wait", type=float, default=8.0, help="seconds to open the page before the run")
     p.add_argument("--step", type=float, default=1.5)
+    p.add_argument("--pause", action="store_true", help="live demo: wait for Enter before each agent section")
     a = p.parse_args()
 
     d = dbmod.get_db()
@@ -90,6 +92,10 @@ def main() -> None:
     oid = ObjectId(sid)
     print(f"session {sid}\nopen http://127.0.0.1:8000/?session_id={sid}&actor={OWNER}", flush=True)
     time.sleep(a.wait)
+
+    def pause(cue: str) -> None:
+        if a.pause:
+            input(f"    [Enter] {cue} ")
 
     beat = Beat()
     orch = orchestrator.Orchestrator(sid, db=d)
@@ -133,18 +139,28 @@ def main() -> None:
         beat.show(c.TOOLS[step.tool].actor, step.tool, r.allowed, r.reason, want, f"{shown} | {step.rationale}")
         time.sleep(a.step)
 
-    def relay(agent_modules: list, scope: list[str], expect: list[str], max_rounds: int = MAX_ROUNDS) -> list:
-        """Run the turn loop until it ends by itself; each step must be allowed and match `expect` (tool names)."""
+    def relay(agent_modules: list, scope: list[str], expect: list[str], max_rounds: int = MAX_ROUNDS,
+              cut_short=None) -> list:
+        """Run the turn loop until it ends by itself; each step must be allowed and match `expect` (tool names).
+
+        `cut_short()` true accepts a shorter run: a person acted on the page before the agents finished.
+        """
         out = []
         for step, meta, r in orch.run_agents(agent_modules, scope, a.llm, max_rounds):
             print(f"    {c.TOOLS[step.tool].actor} offered {meta['offered']}, picked {meta['picked']}, "
                   f"by {meta['by']}" + (f" ({meta['model']})" if meta["model"] else ""), flush=True)
-            show(step, r, True)
-            out.append((step, r))
-        if [step.tool for step, _ in out] != expect:
+            overtaken = not r.allowed and cut_short is not None and cut_short()   # the gate was right to deny
+            show(step, r, not overtaken)
+            if not overtaken:
+                out.append((step, r))
+        if any(r.result is None for _, r in out):
+            raise SystemExit("FAILED: " + "; ".join(beat.bad))
+        tools = [step.tool for step, _ in out]
+        if tools != expect:
             if stopped():
                 finish(early=True)
-            raise SystemExit(f"FAILED: expected agent steps {expect}, got {[step.tool for step, _ in out]}")
+            if not (out and cut_short and cut_short() and tools == expect[:len(tools)]):
+                raise SystemExit(f"FAILED: expected agent steps {expect}, got {tools}")
         return out
 
     def human(actor: str, action: str, condition_id: str, expect: bool, reason: str | None = None) -> None:
@@ -174,6 +190,7 @@ def main() -> None:
 
     # 1. intake proposes a reading, the owner approves it, the planner solves.
     scope = [x["_id"] for x in d.assets.find({"region": setup_db.REGION}, {"_id": 1}, sort=[("_id", 1)], limit=3)]
+    pause("a reading arrives")
     cond1 = relay([intake], scope[:1], ["propose_condition"])[0][1].result["produced"]
     human(OWNER, "approve", cond1, True)
 
@@ -187,6 +204,7 @@ def main() -> None:
     b_id = next(x for x in scope[1:] if x != a_id)   # a bridge with no reading in this session yet
 
     # Probes, not agent choices: two commitments the gate must deny.
+    pause("two commitments the gate must deny")
     for probe in (
         Step("commit_budget", {"asset_id": b_id, "amount": OFF_PLAN}, "PROBE off-plan: amount is not a plan line"),
         Step("commit_budget", {"asset_id": b_id, "amount": OVER_LIMIT}, "PROBE over-limit: above the spend limit"),
@@ -194,26 +212,39 @@ def main() -> None:
         show(probe, orch.submit(probe), False)
 
     # 3. a second reading arrives; agents act on it while it is pending; the engineer cannot decide it.
-    done = [r for _, r in relay([intake, programming, workorder], [b_id],
-                                ["propose_condition", "commit_budget", "create_work_order"])]
-    cond2, budget_b, order_b = (r.result["produced"] for r in done)
-    human(ENGINEER, "approve", cond2, False)
+    pause("a second reading arrives; agents act on it while it is pending")
 
-    # 4. the owner rejects it: only its dependants revert, an inspection is requested, the plan is re-solved.
-    human(OWNER, "reject", cond2, True, "reading disputed, re-inspect")
-    wait_for("revert and re-plan", lambda: stopped() or (
-        d.plans.count_documents({"session_id": sid}) >= 2
-        and d.sessions.find_one({"_id": oid})["status"] == orchestrator.RUNNING))
-    if stopped():
-        finish(early=True)
-    replanned = active_plan()
-    beat.check(f"reverted: budget for {b_id} released", status_of("budget_ledger", budget_b) == "released")
-    beat.check(f"reverted: work order for {b_id} cancelled", status_of("work_orders", order_b) == "cancelled")
-    beat.check(f"kept: budget for {a_id} still committed", status_of("budget_ledger", budget_a) == "committed")
-    beat.check("inspection request opened", d.inspection_requests.count_documents({"condition_id": cond2}) == 1)
-    beat.check(f"re-plan {replanned['_id']} excludes {b_id} and keeps {a_id}",
-               replanned["_id"] != plan["_id"] and b_id not in {l["asset_id"] for l in replanned["lines"]}
-               and a_id in {l["asset_id"] for l in replanned["lines"]})
+    def reading_b() -> dict:
+        return d.condition_records.find_one({"asset_id": b_id, "_id": {"$regex": f"^{sid}:"}}) or {}
+
+    done = [r.result["produced"] for _, r in relay(
+        [intake, programming, workorder], [b_id], ["propose_condition", "commit_budget", "create_work_order"],
+        cut_short=lambda: reading_b().get("status", "pending") != "pending")]
+    cond2, budget_b, order_b = (done + [None, None])[:3]
+    decided = reading_b()["status"]
+    if decided == "pending":
+        human(ENGINEER, "approve", cond2, False)
+        # 4. the owner rejects it: only its dependants revert, an inspection is requested, the plan is re-solved.
+        human(OWNER, "reject", cond2, True, "reading disputed, re-inspect")
+        decided = reading_b()["status"]
+    else:
+        print(f"    {cond2} was {decided} on the page before the script asked: beats 11 and 12 skipped", flush=True)
+    if decided == "rejected":
+        wait_for("revert and re-plan", lambda: stopped() or (
+            d.plans.count_documents({"session_id": sid}) >= 2
+            and d.sessions.find_one({"_id": oid})["status"] == orchestrator.RUNNING))
+        if stopped():
+            finish(early=True)
+        replanned = active_plan()
+        if budget_b:
+            beat.check(f"reverted: budget for {b_id} released", status_of("budget_ledger", budget_b) == "released")
+        if order_b:
+            beat.check(f"reverted: work order for {b_id} cancelled", status_of("work_orders", order_b) == "cancelled")
+        beat.check(f"kept: budget for {a_id} still committed", status_of("budget_ledger", budget_a) == "committed")
+        beat.check("inspection request opened", d.inspection_requests.count_documents({"condition_id": cond2}) == 1)
+        beat.check(f"re-plan {replanned['_id']} excludes {b_id} and keeps {a_id}",
+                   replanned["_id"] != plan["_id"] and b_id not in {l["asset_id"] for l in replanned["lines"]}
+                   and a_id in {l["asset_id"] for l in replanned["lines"]})
 
     # 5. stop: everything left is rolled back.
     if client is None:

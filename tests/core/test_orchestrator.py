@@ -2,6 +2,7 @@
 import threading
 import time
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from bson import ObjectId
@@ -113,6 +114,67 @@ def test_run_agents_stops_at_max_rounds_and_at_a_deny(program):
     done = list(orch.run_agents(LOOP, ["b1", "b2"], use_llm=False, max_rounds=10))
     assert [(s.tool, r.allowed) for s, _, r in done] == [("propose_condition", True), ("commit_budget", False)]
     assert tdb.tasks.find_one({"session_id": sid}, sort=[("_id", -1)])["status"] == "failed"
+    assert _status(tdb, sid) == "running"
+
+
+def test_step_made_stale_while_the_agent_chose_is_not_submitted(program):
+    """A person acts between an agent reading its options and its turn at the gate: the step is dropped."""
+    tdb, sid = program
+    orch = orchestrator.Orchestrator(sid, db=tdb)
+    orch.start()
+    list(orch.run_agents([planner], ["b1", "b2"], use_llm=False, max_rounds=1))
+    calls = []
+
+    def options(d, session_id, scope):
+        offered = programming.options(d, session_id, scope)
+        if not calls:   # after the first read the plan is replaced, as a re-plan would
+            d.plans.update_many({"session_id": session_id}, {"$set": {"superseded": True}})
+        calls.append(len(offered))
+        return offered
+
+    racing = SimpleNamespace(AGENT_ID=programming.AGENT_ID, MODEL=None, options=options)
+    assert list(orch.run_agents([racing], ["b1", "b2"], use_llm=False, max_rounds=3)) == []
+    assert calls[0] == 2 and calls[-1] == 0
+    assert tdb.tasks.count_documents({"session_id": sid, "type": "commit_budget"}) == 0
+    assert [e for e in ledger.replay(sid, db=tdb) if e.get("decision") == "deny"] == []
+    assert _status(tdb, sid) == "running"
+
+
+def test_loop_waits_for_a_revert_then_acts_on_what_is_left(world):
+    tdb, sid = world
+    ids = _two_commitments(tdb, sid)
+    orch = orchestrator.Orchestrator(sid, db=tdb)
+    orch.start()
+    tdb.sessions.update_one({"_id": ObjectId(sid)}, {"$set": {"status": "reverting", "revert_for": "c1"}})
+    done = list(orch.run_agents([workorder], ["b1", "b2"], use_llm=False, max_rounds=5))
+    assert [(s.args, r.allowed) for s, _, r in done] == [({"asset_id": "b2", "budget_id": ids["b2"]}, True)]
+    assert tdb.budget_ledger.find_one({"_id": ids["b1"]})["status"] == "released"
+    assert [e for e in ledger.replay(sid, db=tdb) if e.get("decision") == "deny"] == []
+    assert _status(tdb, sid) == "running"
+
+
+def test_deny_for_a_session_that_left_running_does_not_end_the_loop(world):
+    """A rejection lands after the loop's re-check: the gate denies that step, the loop waits and carries on."""
+    tdb, sid = world
+    ids = _two_commitments(tdb, sid)
+    orch = orchestrator.Orchestrator(sid, db=tdb)
+    orch.start()
+    calls = []
+
+    def options(d, session_id, scope):
+        offered = workorder.options(d, session_id, scope)
+        calls.append(len(offered))
+        if len(calls) == 2:   # the re-check under the lock: the owner's rejection arrives right after it
+            d.sessions.update_one({"_id": ObjectId(session_id)},
+                                  {"$set": {"status": "reverting", "revert_for": "c1"}})
+        return offered
+
+    racing = SimpleNamespace(AGENT_ID=workorder.AGENT_ID, MODEL=None, options=options)
+    done = list(orch.run_agents([racing], ["b1", "b2"], use_llm=False, max_rounds=5))
+    assert [(s.args["asset_id"], r.allowed) for s, _, r in done] == [("b1", False), ("b2", True)]
+    assert done[0][2].reason == "session: status is reverting"
+    assert tdb.budget_ledger.find_one({"_id": ids["b1"]})["status"] == "released"
+    assert tdb.work_orders.count_documents({"asset_id": "b1"}) == 0
     assert _status(tdb, sid) == "running"
 
 
