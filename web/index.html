@@ -38,7 +38,8 @@
     #sess-status[data-s="rolled_back"], #sess-status[data-s="failed"] { background: var(--deny); border-color: var(--deny); }
     .stopbox { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; }
     #stop { background: var(--deny); border-color: #fff; color: #fff; font-size: 1.05rem; padding: 0.45rem 1.3rem; }
-    #stop:hover { background: #fff; color: var(--deny); }
+    #stop:hover:enabled { background: #fff; color: var(--deny); }
+    #stop:disabled { opacity: 0.45; cursor: default; }
     #stop-msg { color: #ffc9c3; font-size: 0.8rem; max-width: 16rem; text-align: right; }
 
     /* guide: the next human action, and how the system works */
@@ -597,6 +598,9 @@
       sub.replaceChildren();
       let tone = "info", attn = false, main, rest = "";
       const st = view.status;
+      const stop = document.getElementById("stop");
+      stop.disabled = st !== "running" && st !== "reverting";
+      if (stop.disabled) document.getElementById("stop-msg").textContent = "";
       if (!sid()) {
         main = "Start a session";
         sub.append("In a terminal run ", el("code", "uv run python run_demo.py --reset"),
