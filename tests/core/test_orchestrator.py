@@ -36,7 +36,7 @@ def stage2(world):
 SCRIPT = [
     Step("commit_budget", {"asset_id": "b1", "amount": 30.0}, "commit b1"),
     Step("commit_budget", {"asset_id": "b2", "amount": 40.0}, "commit b2"),
-    Step("create_work_order", {"asset_id": "b1"}, "work order b1", {"budget_id": 0}),
+    Step("create_work_order", {"asset_id": "b1"}, "work order b1", handoff={"budget_id": 0}),
     Step("commit_budget", {"asset_id": "b2", "amount": 10.0}, "never runs"),
 ]
 

@@ -32,7 +32,7 @@ Python 3.13.3. Versions and licences read from installed package metadata after 
 ## Models and APIs
 | Name | Version / model id | Purpose | Owner | Verified |
 |---|---|---|---|---|
-| Gemini API `generateContent` (HTTPS via stdlib `urllib.request`, key `LLM_API_KEY` in `.env`) | `gemini-3.5-flash-lite`, v1beta | LLM mode in `core/agents.py`: picks one code-built option, writes the rationale; JSON output mode | sagar | 2026-11-14: HTTP 200 with `responseMimeType: application/json`; `test_choose_live_picks_listed_option` passed |
+| Gemini API `generateContent` (HTTPS via stdlib `urllib.request`, key `LLM_API_KEY` in `.env`) | `gemini-3.5-flash-lite`, v1beta | LLM mode in `core/agents/llm.py` for the planner, programming and work-order agents: returns an option index and a rationale; JSON output mode, `systemInstruction` | sagar | 2026-11-14: 3 of 3 live replies valid JSON in 0.67–1.18 s and picked the criterion's option; `run_demo.py --llm` 5 calls, 0 fallbacks. `gemini-3.5-flash` tested for programming and not used: 2 of 3 replies invalid JSON, one took 3.18 s |
 
 ## Tooling
 | Tool | Version | Purpose |

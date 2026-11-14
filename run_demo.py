@@ -19,7 +19,7 @@ import db as dbmod
 import setup_db
 import systems
 from core import agents, orchestrator
-from core.agents import Step
+from core.agents import Step, intake, planner, programming, workorder
 
 RUN_COLLECTIONS = ("sessions", "tasks", "audit_events", "saga_stack", "budget_ledger", "work_orders",
                    "inspection_requests", "plans")
@@ -27,8 +27,6 @@ OWNER, ENGINEER = "user:owner_a", "user:engineer_b"
 ENVELOPE = 250_000_000.0  # assumption: large enough that the plan holds a line for each demo asset
 OVER_LIMIT = setup_db.OWNER_SPEND + 50_000.0
 OFF_PLAN = 12_345.0       # assumption: an amount no plan line has
-MOCK_YEAR = 2026          # mock: the proposed readings are not in the source file
-MOCK_DROP = 5.0           # mock: proposed rating = newest published rating minus this
 SEED_KEY = r"^[^:]+:\d{4}$"  # condition ids the asset loader writes; anything else is from an earlier run
 TIMEOUT = 60.0         # seconds for the watcher to finish a revert and re-plan
 HUMAN_TIMEOUT = 1800.0  # seconds to wait for a click on the page
@@ -117,14 +115,26 @@ def main() -> None:
         beat.check(f"session status {session['status']}", session["status"] == orchestrator.ROLLED_BACK)
         beat.check(f"committed lines left: {left}", left == 0)
         if a.llm:
-            print(f"LLM calls: {agents.USAGE['calls']}, tokens: {agents.USAGE['tokens']}", flush=True)
+            u = agents.USAGE
+            print(f"LLM calls: {u['calls']}, tokens: {u['tokens']}, fallbacks: {u['fallbacks']}", flush=True)
+            for agent_id, n in u["by_agent"].items():
+                print(f"    {agent_id}: calls {n['calls']}, tokens {n['tokens']}, fallbacks {n['fallbacks'] or 0}",
+                      flush=True)
         if beat.bad:
             raise SystemExit("FAILED: " + "; ".join(beat.bad))
         print("demo ok" + (" (stopped early)" if early else ""), flush=True)
         raise SystemExit(0)
 
-    def pick(tool: str, goal: str, options: list[Step]) -> Step:
-        return agents.choose(c.TOOLS[tool].actor, goal, options) if a.llm else options[0]
+    def pick(agent, scope: list[str]) -> Step:
+        """The agent's step for `scope`: the code-ranked best, or in LLM mode the model's pick among the options."""
+        step, meta = agents.choose(agent, d, sid, scope, a.llm)
+        if step is None:
+            if stopped():
+                finish(early=True)
+            raise SystemExit(f"FAILED: {agent.AGENT_ID} has no option for {scope}")
+        print(f"    {agent.AGENT_ID} offered {meta['offered']}, picked {meta['picked']}, by {meta['by']}"
+              + (f" ({meta['model']})" if meta["model"] else ""), flush=True)
+        return step
 
     def relay(script: list[Step], expect: list[bool]) -> list[c.ToolResult]:
         out = []
@@ -136,12 +146,6 @@ def main() -> None:
         if len(out) != len(expect):
             finish(early=True)
         return out
-
-    def mock_condition(asset: str) -> Step:
-        newest = d.condition_records.find_one({"asset_id": asset, "status": "approved"}, sort=[("year", -1)])
-        rating = round(newest["rating"] - MOCK_DROP, 2)
-        return Step("propose_condition", {"asset_id": asset, "rating": rating, "year": MOCK_YEAR},
-                    f"MOCK reading for the demo: {rating} in {MOCK_YEAR} (published {newest['rating']} in {newest['year']})")
 
     def human(actor: str, action: str, condition_id: str, expect: bool, reason: str | None = None) -> None:
         """--auto: the same server route the page button calls. Interactive: wait for the page."""
@@ -169,41 +173,29 @@ def main() -> None:
         return d[coll].find_one({"_id": key})["status"]
 
     # 1. intake proposes a reading, the owner approves it, the planner solves.
-    first = d.assets.find_one({"region": setup_db.REGION}, sort=[("_id", 1)])["_id"]
-    cond1 = relay([mock_condition(first)], [True])[0].result["produced"]
+    scope = [x["_id"] for x in d.assets.find({"region": setup_db.REGION}, {"_id": 1}, sort=[("_id", 1)], limit=3)]
+    cond1 = relay([pick(intake, scope[:1])], [True])[0].result["produced"]
     human(OWNER, "approve", cond1, True)
-    relay([pick("propose_plan", "Solve the treatment plan for the session from the approved condition records.",
-                [Step("propose_plan", {}, "plan from approved conditions")])], [True])
+    relay([pick(planner, scope)], [True])
     plan = active_plan()
-    lines = sorted(plan["lines"], key=lambda l: (-l["benefit"] / l["cost"], l["asset_id"]))[:3]
-    if len(lines) < 3:
-        raise SystemExit(f"plan has {len(plan['lines'])} lines, need 3")
+    if len([l for l in plan["lines"] if l["asset_id"] in scope]) < 3:
+        raise SystemExit(f"plan {plan.get('_id')} has no line for one of {scope}")
     print(f"    plan {plan['_id']}: {len(plan['lines'])} lines, total cost "
           f"{sum(l['cost'] for l in plan['lines']):,.2f} of envelope {ENVELOPE:,.2f}", flush=True)
 
     # 2. programming picks which plan line to commit first; work order follows; two commitments are denied.
-    options = [Step("commit_budget", {"asset_id": l["asset_id"], "amount": l["cost"]},
-                    f"plan line {l['treatment']}: cost {l['cost']:,.2f}, benefit {l['benefit']:,.2f}, "
-                    f"benefit per dollar {l['benefit'] / l['cost']:.6f}") for l in lines]
-    commit_a = pick("commit_budget", "Commit first the plan line with the highest benefit per dollar.", options)
+    commit_a = pick(programming, scope)
     a_id = commit_a.args["asset_id"]
-    commit_b = next(o for o in options if o.args["asset_id"] != a_id)
-    b_id = commit_b.args["asset_id"]
-    order_a = pick("create_work_order", f"Open the work order for the bridge whose budget was just committed ({a_id}).",
-                   [Step("create_work_order", {"asset_id": a_id}, f"work order for {a_id}", {"budget_id": 0})])
-    done = relay([
-        commit_a, order_a,
+    b_id = next(x for x in scope[1:] if x != a_id)   # a bridge with no reading in this session yet
+    budget_a = relay([commit_a], [True])[0].result["produced"]
+    relay([pick(workorder, [a_id])], [True])
+    relay([
         Step("commit_budget", {"asset_id": b_id, "amount": OFF_PLAN}, "off-plan attempt: amount is not a plan line"),
         Step("commit_budget", {"asset_id": b_id, "amount": OVER_LIMIT}, "over-limit attempt"),
-    ], [True, True, False, False])
-    budget_a = done[0].result["produced"]
+    ], [False, False])
 
     # 3. a second reading arrives; agents act on it while it is pending; the engineer cannot decide it.
-    done = relay([
-        mock_condition(b_id),
-        commit_b._replace(handoff={"condition_id": 0}),
-        Step("create_work_order", {"asset_id": b_id}, f"work order for {b_id}", {"budget_id": 1}),
-    ], [True, True, True])
+    done = [relay([pick(agent, [b_id])], [True])[0] for agent in (intake, programming, workorder)]
     cond2, budget_b, order_b = (r.result["produced"] for r in done)
     human(ENGINEER, "approve", cond2, False)
 
