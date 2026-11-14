@@ -28,6 +28,12 @@
     header { display: grid; grid-template-columns: 1fr auto auto auto; gap: 0.4rem 1.25rem; align-items: center; padding: 0.55rem 1.25rem; background: var(--ink); color: #fff; }
     .brand h1 { margin: 0; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; }
     .brand p { margin: 0; font-size: 0.88rem; color: #c7d3da; max-width: 44rem; }
+    .brand .links { margin-top: 0.25rem; display: flex; gap: 0.65rem; flex-wrap: wrap; }
+    .brand .links a {
+      color: #fff; text-decoration: none; font-size: 0.8rem; font-weight: 700;
+      border: 1.5px solid #6f8594; border-radius: 4px; padding: 0.1rem 0.45rem;
+    }
+    .brand .links a:hover { background: #fff; color: var(--ink); }
     .field { display: flex; flex-direction: column; gap: 0.1rem; font-size: 0.8rem; color: #c7d3da; }
     .field input, .field select { border-color: #6f8594; }
     #session { width: 15.5rem; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85rem; }
@@ -151,6 +157,7 @@
     <div class="brand">
       <h1>load-path</h1>
       <p>AI agents plan bridge repairs and commit budget; every action passes a policy gate, and you stay in control.</p>
+      <div class="links"><a href="/guards" title="Explain the policy checks in MongoDB">Guards</a></div>
     </div>
     <label class="field">Session
       <input id="session" placeholder="paste a session id" />

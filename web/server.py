@@ -82,6 +82,10 @@ def create_app(database=None) -> FastAPI:
     def index():
         return FileResponse(WEB_DIR / "index.html")
 
+    @app.get("/guards")
+    def guards():
+        return FileResponse(WEB_DIR / "guards.html")
+
     @app.post("/sessions/{session_id}/stop")
     def stop_session(session_id: str, body: StopBody):
         if not ObjectId.is_valid(session_id):
