@@ -26,6 +26,7 @@ Python 3.13.3. Versions and licences read from installed package metadata after 
 | fastapi | 0.162.7 | MIT | Web server, SSE feed | Arad |
 | uvicorn | 0.54.0 | BSD-3-Clause | ASGI server | Arad |
 | pytest (dev) | 9.2.0 | MIT | Tests | both |
+| httpx (dev) | 0.28.1 | BSD-3-Clause | Starlette/FastAPI TestClient for web tests | Arad |
 
 ## Tooling
 | Tool | Version | Purpose |
