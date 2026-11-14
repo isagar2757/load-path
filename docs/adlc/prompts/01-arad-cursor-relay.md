@@ -15,8 +15,9 @@ Rules:
 - Only files in Arad's lane (AGENTS.md, "lanes and ownership"). contracts.py changes need a logged decision.
 - No guessing. Every fact about an API, file or the database comes from reading or running it now;
   otherwise write UNVERIFIED and the command that would verify it.
-- Tests first (pytest). Tests that need Atlas use db.get_db("capital_test"), drop it after, and skip when
-  MONGODB_URI is unset.
+- Tests first (pytest). Tests that need Atlas use their own db.get_db("capital_test_<suffix>"), drop it
+  after, and skip when MONGODB_URI is unset.
+- Design bar and review loop: AGENTS.md. Check your diff against rules 1-7 before each commit.
 - Concise, no filler.
 
 Loop for each item (take a READY Arad item from the board):
@@ -27,10 +28,12 @@ Loop for each item (take a READY Arad item from the board):
 4. Implement. Run uv run pytest -q until green. Log --event test_run --evidence "<pytest summary line>".
 5. Commit (Conventional Commits; status comes from events, not TRACKER.md), push, open a PR.
    Log --event handoff --to sagar --summary "review PR #<n>".
-6. When Sagar's agent logs review --to arad "fail: ...", fix on the same branch and go to 4.
+6. When Sagar's agent logs review --to arad "fail: <rule #> <file:line> <fix>", fix every finding on the same
+   branch and go to 4. Disagree only with question --to sagar and evidence.
    After "pass", Arad merges; log --event task_done --sha <merge sha>.
 7. When the inbox has "review PR #<n>" from sagar: read that diff against its plan task and contracts.py,
-   run its tests, and log --event review --to sagar --summary "pass" or "fail: <exact reason>".
+   and the design bar, run its tests, and log --event review --to sagar --summary "pass" or
+   "fail: <rule #> <file:line> <fix>".
 Stop and ask Arad before: merging, pushing to main, deleting data, or changing contracts.py.
 
 A0 now: setup_db.py — $jsonSchema validators (additionalProperties: false) on the control collections from the

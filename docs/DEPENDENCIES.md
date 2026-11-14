@@ -41,5 +41,5 @@ Python 3.13.3. Versions and licences read from installed package metadata after 
 | Name | Where | Purpose |
 |---|---|---|
 | adlc-log | `.claude/skills/adlc-log/` | Teaches Claude Code the log and the relay loop |
-| adlc rule | `.cursor/rules/adlc.mdc` | Same for Cursor (always applied) |
+| adlc rule | `.cursor/rules/adlc.mdc` | Same for Cursor (always applied); points to the AGENTS.md design bar and review loop |
 | SessionStart hook | `.claude/settings.json` | Prints the inbox (events `--to` me) and latest 10 log events at session start |

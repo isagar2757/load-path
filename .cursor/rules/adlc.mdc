@@ -8,3 +8,4 @@ Status lives only in Mongo `adlc.items`; logged events update it. Do not edit st
 Log with `ADLC_TOOL=cursor uv run scripts/adlc_log.py add --item <ID> --phase <P> --event <E> --summary "<one line>" [--to sagar] [--evidence "<command output line>"]`:
 task_start, test_run (with evidence), task_done --sha <merge sha> after merge, handoff --to sagar when a PR is ready, review --to sagar after reviewing his PR, question/blocker --to sagar.
 Branch `feat/<id>-<slug>` (e.g. feat/a0-setup-db). Tests first. Never edit a file outside your lane; never change contracts.py without a logged decision. Never write secrets. No guessing: verify or write UNVERIFIED.
+Design bar and review loop: AGENTS.md. Before each commit, check your diff against the design bar rules 1-7. A `review --to arad` with `fail: <rule #> ...` means fix every listed finding on the same branch, rerun tests, then log `handoff --to sagar`; disagree only with `question --to sagar` and evidence.

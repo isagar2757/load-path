@@ -50,7 +50,7 @@ Sagar works in Claude Code, Arad in Cursor. Both agents follow the same loop. It
 | 3 Red | agent | write the plan task's tests; run them; `--event test_run --evidence "<n> failed"` | tests fail for the right reason |
 | 4 Green | agent | implement in own lane only; `--event test_run --evidence "<n> passed"` | `uv run pytest -q` green |
 | 5 Ship | agent | commit (hooks log it), push, PR; `--event handoff --to <other> --summary "review PR #<n>"` | PR open, CI green |
-| 6 Review | other agent | read the diff against the plan task and `contracts.py`; `--event review --to <author> --summary "pass"` or `"fail: <reason>"` | pass logged |
+| 6 Review | other agent | read the diff against the plan task, `contracts.py` and the AGENTS.md design bar; `--event review --to <author> --summary "pass"` or `"fail: <rule #> <file:line> <fix>"` | pass logged |
 | 7 Fix | agent | on `fail`, back to step 4 on the same branch; max 2 rounds, then `--event blocker --to <other>` | pass logged |
 | 8 Merge | human | merge the PR; agent logs `--event task_done --sha <merge sha>` (sets the item done) | on `main` |
 | 9 Gate | both | at a stage gate run the plan's checklist; `--event gate --item G<n> --evidence "<pytest line>; beat ok x2"` | gate logged |

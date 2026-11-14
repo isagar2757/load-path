@@ -33,13 +33,28 @@ Applies to Claude Code, Cursor and any other agent. `CLAUDE.md` imports this fil
 
 ## Event build: constraints
 Spec, plan and formulas: [spec](docs/superpowers/specs/2026-11-13-audited-agent-design.md) · [plan](docs/superpowers/plans/2026-11-14-event-build.md) · [formulas](docs/formulas.md).
-- Database `capital`; tests use `capital_test` and drop it. Get a handle only through `db.get_db()`.
+- Database `capital`; each test uses its own `capital_test_<suffix>` and drops it (a shared name races between our runs). Get a handle only through `db.get_db()`.
 - Nothing from an employer, no vendor product names, no safety or engineering judgment.
 - The page is a control surface (feed, approve/reject, stop). No chart-only views.
 - Code does all arithmetic. The LLM picks from listed options and writes the rationale.
 - Treatment costs are assumptions; the README says so.
 - Every tool call, agent or human, goes through `guarded_call`. Nothing else writes to a domain collection after seeding.
 - Tests that need Atlas skip when `MONGODB_URI` is unset (CI has none).
+
+## Design bar (both agents; reviews enforce it)
+A PR that breaks a rule below fails review. The reviewer cites the rule number.
+1. Build what the plan task and `contracts.py` say. No extra collections, fields, endpoints, flags, layers or abstractions. A gap is a `question --to <other>`, not an invention.
+2. Names, fields, statuses and tool names come from `contracts.py`; import them, never retype the strings.
+3. Tools match the `contracts.py` shape: `fn(db, args)` returns `produced`; `snapshot`; `undo` idempotent. Domain writes are single atomic updates (no read-then-write; formulas §4) and run only via `guarded_call`.
+4. Fail closed: no bare `except` that hides an error; no default that turns a missing value into an allow.
+5. Each test the plan names exists under that name; a red `test_run` event precedes the green one. No test that only asserts a mock was called.
+6. Smallest code that passes: no dead code, commented-out code, unused parameters, or TODO without a tracker item. A new library needs a `docs/DEPENDENCIES.md` row.
+7. Page: the control surface in the constraints above; every button calls the server, the server calls `guarded_call`.
+
+## Review loop
+- Reviewer: read the diff against the plan task, `contracts.py`, `docs/formulas.md` and the design bar; run `uv run pytest -q`. Log `review --to <author>` with `pass` or `fail: <rule #> <file:line> <fix>`, one line per finding.
+- Author: fix every finding on the same branch, or reply `question --to <reviewer>` with evidence. No silent skips, no merging over a `fail`.
+- After two `fail` rounds on the same item: `blocker --to <other>`; the two people decide.
 
 ## Event build: lanes and ownership
 | Path | Owner |
