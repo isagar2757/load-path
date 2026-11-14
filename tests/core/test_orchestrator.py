@@ -125,8 +125,8 @@ def test_stop_during_tool(stage2):
     assert tdb.budget_ledger.count_documents({"status": "committed"}) == 0
 
 
-def test_reject_reverts_dependants_then_replans(world):
-    tdb, sid = world
+def _two_commitments(tdb, sid):
+    """b1's commitment depends on rejected c1, b2's on approved c2. Returns {asset_id: budget_id}."""
     systems.register()
     tdb.principals.insert_many([
         contracts.Principal(id=aid, kind="agent", roles=[aid.split(":")[1]], region="r1", spend_limit=0,
@@ -145,6 +145,12 @@ def test_reject_reverts_dependants_then_replans(world):
                               "r", depends_on=[cond], db=tdb)
         assert b.allowed and b.result, b.reason
         ids[asset_id] = b.result["produced"]
+    return ids
+
+
+def test_reject_reverts_dependants_then_replans(world):
+    tdb, sid = world
+    ids = _two_commitments(tdb, sid)
     orch = orchestrator.Orchestrator(sid, db=tdb)
     orch.start()
     tdb.sessions.update_one({"_id": ObjectId(sid)}, {"$set": {"status": "reverting", "revert_for": "c1"}})
@@ -163,4 +169,30 @@ def test_reject_reverts_dependants_then_replans(world):
     orch.watcher.join(timeout=10)
     assert _status(tdb, sid) == "rolled_back"
     assert tdb.budget_ledger.count_documents({"status": "committed"}) == 0
+    assert ledger.verify(sid, db=tdb) == (True, None)
+
+
+def test_failed_undo_ends_session_failed(world):
+    tdb, sid = world
+    ids = _two_commitments(tdb, sid)
+    reg = gate.REGISTRY["commit_budget"]
+
+    def broken(db, undo_args):
+        raise RuntimeError("undo broke")
+
+    gate.register_tool("commit_budget", reg.fn, reg.snapshot, broken, reg.undo_tool)
+    try:
+        orch = orchestrator.Orchestrator(sid, db=tdb)
+        orch.start()
+        tdb.sessions.update_one({"_id": ObjectId(sid)}, {"$set": {"status": "reverting", "revert_for": "c1"}})
+        orch.watcher.join(timeout=10)
+    finally:
+        systems.register()
+
+    assert not orch.watcher.is_alive()
+    assert _status(tdb, sid) == "failed"
+    ended = [e for e in ledger.replay(sid, db=tdb) if e["type"] == "session_ended"]
+    assert [e["after"]["failed"] for e in ended] == [[int(ids["b1"].rsplit(":", 1)[1])]]
+    assert tdb.inspection_requests.count_documents({}) == 0
+    assert tdb.plans.count_documents({}) == 0
     assert ledger.verify(sid, db=tdb) == (True, None)
