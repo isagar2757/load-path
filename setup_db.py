@@ -217,6 +217,7 @@ def _policies(now: datetime) -> list[dict]:
         ("approve_condition", ["owner"], ["role", "jurisdiction"]),
         ("reject_condition", ["owner"], ["role", "jurisdiction", "has_reason"]),
         ("request_inspection", ["orchestrator"], ["role"]),
+        ("propose_plan", ["planner"], ["role"]),
     ]
     return [
         {

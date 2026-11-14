@@ -107,6 +107,16 @@ def _check_has_commitment(ctx: dict, params: dict) -> None:
         raise Deny(f"has_commitment: no committed budget line for asset {aid} in this session")
 
 
+def _check_in_approved_plan(ctx: dict, params: dict) -> None:
+    aid, amount = _asset_id(ctx, "in_approved_plan"), _amount(ctx, "in_approved_plan")
+    sid = str(ctx["session"]["_id"])
+    plan = ctx["db"].plans.find_one({"session_id": sid, "superseded": False}, {"lines": 1}, sort=[("seq", -1)])
+    if plan is None:
+        raise Deny("in_approved_plan: session has no active plan")
+    if not any(l.get("asset_id") == aid and l.get("cost") == amount for l in plan.get("lines", [])):
+        raise Deny(f"in_approved_plan: no line for asset {aid} with amount {amount} in plan {plan['_id']}")
+
+
 def _check_has_reason(ctx: dict, params: dict) -> None:
     r = ctx["args"].get("reason")
     if not isinstance(r, str) or not r.strip():
@@ -119,6 +129,7 @@ CHECKS: dict[str, Callable[[dict, dict], None]] = {
     "envelope": _check_envelope,
     "jurisdiction": _check_jurisdiction,
     "has_commitment": _check_has_commitment,
+    "in_approved_plan": _check_in_approved_plan,
     "has_reason": _check_has_reason,
 }
 
