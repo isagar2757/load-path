@@ -11,7 +11,7 @@ IDs: `S*` Sagar (Claude Code) · `A*` Arad (Cursor) · `G*` stage gate (both) ·
 |---|---|---|---|---|---|---|
 | S0 | Sagar | LICENSE, pyproject, `contracts.py`, `db.py`, lanes in AGENTS.md | Verify | active | — | PR #3: CI green; 12 passed. Merge |
 | RELAY | Sagar | Relay loop: `--to`, `inbox`, `review`/`gate` events, item from branch, rules | Verify | active | S0 | `setup.sh` all ok; arad inbox shows a `--to arad` handoff |
-| A0 | Arad | `setup_db.py`: validators, indexes (`contracts.INDEXES`), seed 2 humans, agents, one active policy per Stage 2 tool | Build | todo | S0 | runs twice without error; `principals` insert missing `kind` → code 121 |
+| A0 | Arad | `setup_db.py`: validators, indexes (`contracts.INDEXES`), seed 2 humans, agents, one active policy per Stage 2 tool | Verify | active | S0 | `uv run pytest tests/systems/test_setup_db.py -q` → 3 passed; setup twice ok; missing `kind` → 121 |
 | A1 | Arad | `web/server.py` SSE `/events`, `POST /sessions/{id}/stop`; `web/index.html` feed | Build | todo | S0 | event inserted by hand appears on the page < 2 s |
 
 ## Ground truth
