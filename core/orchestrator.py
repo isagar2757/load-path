@@ -100,7 +100,7 @@ class Orchestrator:
                 self.d.tasks.insert_one(contracts.Task(
                     session_id=self.sid, type=step.tool, agent_id=contracts.TOOLS[step.tool].actor, status=QUEUED,
                     input={"args": {**step.args, **handed}, "rationale": step.rationale,
-                           "depends_on": list(handed.values())},
+                           "depends_on": [*step.depends_on, *handed.values()]},
                     created_at=datetime.now(UTC)).model_dump())
                 task = claim(self.d, self.sid)
                 r = agents.act(self.d, task)
