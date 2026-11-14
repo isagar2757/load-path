@@ -153,3 +153,42 @@ def test_failed_undo_marks_comp_failed_and_continues(world):
     assert states == {first: "compensated", second: "comp_failed"}
     failed = [e for e in ledger.replay(sid, db=tdb) if e["type"] == "failed"]
     assert failed and "undo broke" in failed[-1]["reason"]
+
+
+def test_rollback_restores_state(world):
+    """S3 check: two commits and one work order through the gate; rollback leaves the domain as before."""
+    from datetime import UTC, datetime
+
+    import contracts
+    import systems
+
+    tdb, sid = world
+    systems.register()
+    now = datetime.now(UTC)
+    tdb.principals.insert_one(contracts.Principal(id="agent:workorder", kind="agent", roles=["workorder"],
+                                                  region="r1", spend_limit=0, active=True).model_dump(by_alias=True))
+    for tool, role, checks in [("commit_budget", "programming", ["spend_limit", "envelope", "jurisdiction"]),
+                               ("create_work_order", "workorder", ["has_commitment"])]:
+        tdb.policies.insert_one(contracts.Policy(
+            tool=tool, version=1, status="active", roles=[role],
+            checks=[contracts.PolicyCheck(name=n) for n in ["role", *checks]],
+            author="user:owner_a", created_at=now).model_dump())
+    tdb.assets.insert_many([{"_id": "b1", "region": "r1"}, {"_id": "b2", "region": "r1"}])
+
+    def live():
+        return (list(tdb.budget_ledger.find({"status": "committed"})),
+                list(tdb.work_orders.find({"status": {"$ne": "cancelled"}})),
+                list(tdb.assets.find()))
+
+    before = live()
+    c1 = gate.guarded_call(sid, "agent:programming", "commit_budget", {"asset_id": "b1", "amount": 30.0}, "r", db=tdb)
+    c2 = gate.guarded_call(sid, "agent:programming", "commit_budget", {"asset_id": "b2", "amount": 40.0}, "r", db=tdb)
+    wo = gate.guarded_call(sid, "agent:workorder", "create_work_order",
+                           {"asset_id": "b1", "budget_id": c1.result["produced"]}, "r", db=tdb)
+    assert all(r.allowed for r in (c1, c2, wo)), [r.reason for r in (c1, c2, wo)]
+    assert live() != before
+
+    out = revert.rollback_session(sid, db=tdb)
+    armed = sorted((e["seq"] for e in _saga(tdb, sid)), reverse=True)
+    assert len(armed) == 3 and out == {"compensated": armed, "failed": []}
+    assert live() == before

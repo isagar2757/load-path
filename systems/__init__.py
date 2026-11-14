@@ -1,0 +1,14 @@
+"""Domain tools. `register()` puts them in the gate registry; undo names come from contracts.TOOLS."""
+from contracts import TOOLS
+from core import gate
+from systems import budget, workorders
+
+_TOOLS = {
+    "commit_budget": (budget.commit_budget, budget.snapshot, budget.release_budget),
+    "create_work_order": (workorders.create_work_order, workorders.snapshot, workorders.cancel_work_order),
+}
+
+
+def register() -> None:
+    for name, (fn, snap, undo) in _TOOLS.items():
+        gate.register_tool(name, fn, snap, undo, TOOLS[name].undo_tool)
