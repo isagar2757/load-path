@@ -1,4 +1,4 @@
-"""Stage 2 demo beat: agents commit, an over-limit commitment is denied, stop rolls back.
+"""Demo beat: the planner proposes a plan, agents commit its lines, an over-limit commitment is denied, stop rolls back.
 
     uv run python run_demo.py --reset            # then open the printed URL and press Stop
     uv run python run_demo.py --reset --auto-stop
@@ -22,8 +22,7 @@ from core.agents import Step
 RUN_COLLECTIONS = ("sessions", "tasks", "audit_events", "saga_stack", "budget_ledger", "work_orders",
                    "inspection_requests")
 OWNER = "user:owner_a"
-ENVELOPE = 120_000.0
-COMMITS = (40_000.0, 35_000.0)
+ENVELOPE = 250_000_000.0  # assumption: large enough that the plan holds a line for each demo asset
 OVER_LIMIT = setup_db.OWNER_SPEND + 50_000.0
 
 
@@ -60,14 +59,20 @@ def main() -> None:
     print(f"session {sid}\nopen http://127.0.0.1:8000/?session_id={sid}")
     time.sleep(a.wait)
 
+    orch = orchestrator.Orchestrator(sid, db=d)
+    orch.start()
+    for step, r in orch.run([Step("propose_plan", {}, "plan from approved conditions")]):
+        _show(r, step.tool)
+    plan = d.plans.find_one({"session_id": sid, "superseded": False}, sort=[("seq", -1)]) or {"lines": []}
+    cost = {line["asset_id"]: line["cost"] for line in plan["lines"]}
+    if not all(asset in cost for asset in assets):
+        raise SystemExit(f"plan has no line for {assets}")
     script = [
-        *(Step("commit_budget", {"asset_id": asset, "amount": amount}, f"commit {amount:.0f} for {asset}")
-          for asset, amount in zip(assets, COMMITS)),
+        *(Step("commit_budget", {"asset_id": asset, "amount": cost[asset]}, f"commit plan line for {asset}")
+          for asset in assets),
         Step("create_work_order", {"asset_id": assets[0]}, f"work order for {assets[0]}", {"budget_id": 0}),
         Step("commit_budget", {"asset_id": assets[1], "amount": OVER_LIMIT}, "over-limit attempt"),
     ]
-    orch = orchestrator.Orchestrator(sid, db=d)
-    orch.start()
     for step, r in orch.run(script):
         _show(r, f"{step.tool} {step.args}")
         time.sleep(a.step)

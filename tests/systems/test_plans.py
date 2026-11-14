@@ -22,8 +22,6 @@ def domain(world):
         id=PLANNER, kind="agent", roles=["planner"], region="r1", spend_limit=0, active=True,
     ).model_dump(by_alias=True))
     tdb.policies.insert_many(setup_db._policies(datetime.now(UTC)))
-    tdb.policies.update_one({"tool": "commit_budget", "status": "active"},
-                            {"$push": {"checks": {"name": "in_approved_plan", "params": {}}}})
     # deck 10 m2: b1 (BCI 50) major 20000 -> 250; b2 (BCI 80) minor 5000 -> 100. Optimum at 25000: both.
     tdb.assets.insert_many([{"_id": "b1", "region": "r1", "deck_area": 10.0},
                             {"_id": "b2", "region": "r1", "deck_area": 10.0}])

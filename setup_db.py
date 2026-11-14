@@ -8,7 +8,10 @@ import db
 
 # Seed values (region / limits not fixed in formulas; engineer lower than owner).
 REGION = "r1"
-OWNER_SPEND = 100_000.0
+# assumption, README: plan-scale limits. Largest plan line = replacement 6000 /m2 x 13487.1044 m2 (largest seeded
+# deck) = 80,922,626.4, so OWNER_SPEND 100_000_000 admits every line. ENGINEER_SPEND 10_000 is below the smallest
+# line (minor_rehab 500 /m2 x 205.875 m2 = 102,937.5), so the engineer is denied on every plan line.
+OWNER_SPEND = 100_000_000.0
 ENGINEER_SPEND = 10_000.0
 POLICY_AUTHOR = "user:owner_a"
 
@@ -212,7 +215,7 @@ def _seed_principals(database) -> None:
 def _policies(now: datetime) -> list[dict]:
     """Active version-1 policies: (tool, roles, checks)."""
     specs = [
-        ("commit_budget", ["programming"], ["role", "spend_limit", "envelope", "jurisdiction"]),
+        ("commit_budget", ["programming"], ["role", "spend_limit", "envelope", "jurisdiction", "in_approved_plan"]),
         ("create_work_order", ["workorder"], ["role", "has_commitment"]),
         ("approve_condition", ["owner"], ["role", "jurisdiction"]),
         ("reject_condition", ["owner"], ["role", "jurisdiction", "has_reason"]),
