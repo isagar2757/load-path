@@ -50,6 +50,7 @@
     #next[data-tone="act"] #next-tag { background: var(--revert); }
     #next[data-tone="done"] #next-tag { background: var(--muted); }
     #next-text { font-size: 1.1rem; font-weight: 600; }
+    #continue { margin-left: auto; flex: none; font-size: 1.05rem; padding: 0.45rem 1.3rem; }
     #next-sub { font-size: 0.95rem; color: var(--muted); }
     #next-sub code { background: var(--steel-soft); padding: 0.05rem 0.35rem; border-radius: 4px; color: var(--ink); }
     #how { display: flex; gap: 0.35rem; list-style: none; margin: 0; padding: 0; font-size: 0.85rem; counter-reset: how; }
@@ -173,6 +174,7 @@
     <div id="next" role="status">
       <span id="next-tag">Next step</span>
       <div><div id="next-text"></div><div id="next-sub"></div></div>
+      <button type="button" id="continue" hidden>Continue</button>
     </div>
     <ol id="how" aria-label="How this works">
       <li><b>Agents propose</b><span>readings, a plan, budget, work orders</span></li>
@@ -242,7 +244,7 @@
     const stopMsg = document.getElementById("stop-msg");
     let source = null;
     let timer = null;
-    let view = { status: null, pending: 0, missing: false, rejectedAt: 0 };
+    let view = { status: null, pending: 0, missing: false, rejectedAt: 0, cue: null };
 
     sessionInput.value = params.get("session_id") || "";
     actorInput.value = params.get("actor") || "";
@@ -628,6 +630,10 @@
       } else if (st === "completed") {
         tone = "done";
         main = "Session completed.";
+      } else if (st === "running" && view.cue) {
+        tone = "act";
+        main = "Next: " + view.cue;
+        rest = "The demo script is waiting. Press Continue when you are ready.";
       } else if (st === "running" && view.pending > 0) {
         tone = "act"; attn = true;
         main = "Approve or reject the pending reading";
@@ -641,8 +647,23 @@
       text.textContent = main;
       if (rest) sub.append(rest);
       box.dataset.tone = tone;
+      document.getElementById("continue").hidden = !(st === "running" && view.cue);
       condSec.classList.toggle("attn", attn);
     }
+
+    // The demo script's pause cue (run_demo.py --pause page). Polled on its own so present mode shows it too.
+    async function loadPause() {
+      if (!sid()) return;
+      const r = await fetch(base() + "/pause");
+      view.cue = r.ok ? (await r.json()).cue : null;
+      guide();
+    }
+    setInterval(loadPause, 1000);
+    document.getElementById("continue").addEventListener("click", async () => {
+      await fetch(base() + "/pause", { method: "DELETE" });
+      view.cue = null;
+      guide();
+    });
 
     function start() {
       firstPlan = null;
