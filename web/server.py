@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,23 @@ def create_app(database=None) -> FastAPI:
         asset_ids = d().assets.distinct("_id", {"region": region})
         return list(d().condition_records.find({"status": STATUS_PENDING, "asset_id": {"$in": asset_ids}})
                     .sort("_id", 1))
+
+    @app.get("/sessions/{session_id}/state")
+    def session_state(session_id: str):
+        doc = session(session_id)
+        by_session = {"session_id": session_id}
+        plan = d().plans.find_one({**by_session, "superseded": False}, sort=[("seq", -1)])
+        if plan is not None:
+            plan["total_cost"] = sum(line["cost"] for line in plan["lines"])
+        return {
+            "session": {"status": doc["status"], "budget_envelope": doc["budget_envelope"]},
+            "plan": plan,
+            "budget": list(d().budget_ledger.find(by_session).sort("_id", 1)),
+            "work_orders": list(d().work_orders.find(by_session).sort("_id", 1)),
+            # Inspection requests carry no session_id; their _id is the gate key "<session_id>:<seq>".
+            "inspections": list(d().inspection_requests.find({"_id": {"$regex": f"^{re.escape(session_id)}:"}})
+                                .sort("_id", 1)),
+        }
 
     @app.post("/sessions/{session_id}/conditions/approve")
     def approve_condition(session_id: str, body: ApproveBody):
