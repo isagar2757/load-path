@@ -7,6 +7,7 @@ import pytest
 from bson import ObjectId
 
 import contracts
+import setup_db
 import systems
 from core import gate, ledger, orchestrator
 from core.agents import Step
@@ -122,3 +123,44 @@ def test_stop_during_tool(stage2):
     assert types.count("executed") == 1
     assert types.index("executed") < types.index("abort_observed")
     assert tdb.budget_ledger.count_documents({"status": "committed"}) == 0
+
+
+def test_reject_reverts_dependants_then_replans(world):
+    tdb, sid = world
+    systems.register()
+    tdb.principals.insert_many([
+        contracts.Principal(id=aid, kind="agent", roles=[aid.split(":")[1]], region="r1", spend_limit=0,
+                            active=True).model_dump(by_alias=True)
+        for aid in ("agent:workorder", "agent:orchestrator", "agent:planner")])
+    tdb.policies.insert_many(setup_db._policies(datetime.now(UTC)))
+    tdb.policies.update_one({"tool": "commit_budget", "status": "active"},
+                            {"$pull": {"checks": {"name": "in_approved_plan"}}})  # same test with or without it
+    tdb.assets.insert_many([{"_id": "b1", "region": "r1", "deck_area": 10.0},
+                            {"_id": "b2", "region": "r1", "deck_area": 10.0}])
+    tdb.condition_records.insert_many([{"_id": "c1", "asset_id": "b1", "rating": 50.0, "status": "rejected"},
+                                       {"_id": "c2", "asset_id": "b2", "rating": 80.0, "status": "approved"}])
+    ids = {}
+    for asset_id, cond in [("b1", "c1"), ("b2", "c2")]:
+        b = gate.guarded_call(sid, "agent:programming", "commit_budget", {"asset_id": asset_id, "amount": 30.0},
+                              "r", depends_on=[cond], db=tdb)
+        assert b.allowed and b.result, b.reason
+        ids[asset_id] = b.result["produced"]
+    orch = orchestrator.Orchestrator(sid, db=tdb)
+    orch.start()
+    tdb.sessions.update_one({"_id": ObjectId(sid)}, {"$set": {"status": "reverting", "revert_for": "c1"}})
+    t0 = time.monotonic()
+    while not tdb.plans.find_one({"session_id": sid}) and time.monotonic() - t0 < 10:
+        time.sleep(0.05)
+
+    assert tdb.budget_ledger.find_one({"_id": ids["b1"]})["status"] == "released"
+    assert tdb.budget_ledger.find_one({"_id": ids["b2"]})["status"] == "committed"
+    [req] = tdb.inspection_requests.find()
+    assert (req["condition_id"], req["asset_id"]) == ("c1", "b1")
+    assert tdb.plans.count_documents({"session_id": sid, "superseded": False}) == 1
+    assert _status(tdb, sid) == "running"
+
+    _request_stop(tdb, sid)
+    orch.watcher.join(timeout=10)
+    assert _status(tdb, sid) == "rolled_back"
+    assert tdb.budget_ledger.count_documents({"status": "committed"}) == 0
+    assert ledger.verify(sid, db=tdb) == (True, None)

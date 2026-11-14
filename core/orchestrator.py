@@ -2,6 +2,8 @@
 
 One worker queues a script step as a `tasks` document, claims it and lets the step's agent act through the gate.
 A watcher thread polls the session; on `abort_requested` it waits for the tool call in flight, then rolls back.
+On `reverting` it reverts the rejected condition's dependants and re-plans, then keeps watching; a failed undo
+ends the session `failed` (a person decides).
 """
 import threading
 import time
@@ -14,6 +16,7 @@ from pymongo import ReturnDocument
 import contracts
 import db as dbmod
 from core import agents, ledger, revert
+from systems import plans
 
 RUNNING, REVERTING, ABORT_REQUESTED, ROLLING_BACK, ROLLED_BACK, _, FAILED = contracts.SESSION_STATUS
 QUEUED, CLAIMED, DONE, TASK_FAILED, _ = contracts.TaskStatus.__args__
@@ -59,6 +62,15 @@ class Orchestrator:
 
     def _watch(self) -> None:
         while (status := self._status()) in (RUNNING, REVERTING):
+            if status == REVERTING:
+                with self._lock:
+                    session = self.d.sessions.find_one({"_id": self._oid})
+                    out = revert.revert_dependants(self.sid, session["revert_for"], db=self.d)
+                    if out["failed"]:  # an undo failed: stop here, a person decides
+                        self._end(REVERTING, FAILED, {"compensated": out["compensated"], "failed": out["failed"]})
+                        return
+                    plans.replan(self.sid, db=self.d)
+                continue
             time.sleep(self.poll)
         if status != ABORT_REQUESTED:
             return
