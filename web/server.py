@@ -84,8 +84,12 @@ def create_app(database=None) -> FastAPI:
 
     def decide(session_id: str, tool: str, body: ApproveBody) -> contracts.ToolResult:
         session(session_id)
-        res = gate.guarded_call(session_id, body.actor_id, tool, body.model_dump(exclude={"actor_id"}),
-                                None, db=d())
+        rec = d().condition_records.find_one({"_id": body.condition_id}, {"asset_id": 1})
+        if rec is None:
+            raise HTTPException(status_code=404, detail="condition not found")
+        # asset_id comes from the record, so the jurisdiction check reads the condition's real asset.
+        args = {**body.model_dump(exclude={"actor_id"}), "asset_id": rec["asset_id"]}
+        res = gate.guarded_call(session_id, body.actor_id, tool, args, None, db=d())
         if not res.allowed:
             raise HTTPException(status_code=403, detail=res.reason)
         if res.result is None:
