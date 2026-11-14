@@ -31,6 +31,8 @@ action take one path, gate, ledger, revert, so the answers are recorded when the
 | Stop rolls back every live saga entry, newest first; status ends `rolled_back` (or `failed` if an undo fails). | `core/orchestrator.py:82-90` |
 | The page feed is a MongoDB change stream on `audit_events`. | `web/server.py:152` |
 
+| How we built it: status lives only in `adlc.items` (37 items: 23 done, 13 todo, 1 active, 2026-11-14 ~15:50); events in `adlc.log` (209: commit 76, test_run 61, task_done 24, task_start 18, decision 14, handoff 12, review 2, gate 1, question 1). `add` moves an item's status from the event; a post-commit hook logs every commit; hooks run branch guard, secret scan, Conventional Commits and pre-push pytest. Two people and two coding agents relay through `--to` inbox events. 40 merged PRs, 98 commits on `main`. | `scripts/adlc_log.py:101-115`, `.githooks/post-commit`, Atlas db `adlc` |
+
 ## 3. Policies and checks
 
 Seeded by `setup_db.py:215-236` (all version 1, author `user:owner_a`). The gate always applies the policy's
@@ -66,11 +68,12 @@ Before speaking: page server running, `run_demo.py --reset` started, page open f
 
 | Time | Do | On screen | Say |
 |---|---|---|---|
-| 0:00 | Nothing | Page, empty feed | "198 bridges on Highway 401, a budget that covers some. Agents do the planning and the spending. Three questions: why this bridge, who allowed it, what was undone when a fact was wrong." |
-| 0:20 | Approve the pending reading | MOCK reading for 22X-0161/B1. After Approve: plan with 190 lines, 249,979,760 of 250,000,000 | "Pause: `approve_condition` needs the owner role and the right region. Both pass. Then the planner solves a mixed-integer program in code: 190 treatments inside the envelope." |
-| 0:45 | Point at the commit row | Commit 1,618,200 for 22X-0161/B1, minor_rehab, benefit 32,364, benefit per dollar 0.02; work order opens | "Programming picks from plan lines ranked by benefit per dollar. The commit passed five checks: role, spend limit, envelope, jurisdiction, and the amount matches a plan line. The work order passed has_commitment." |
-| 1:10 | Point at the two DENY rows | DENY `in_approved_plan` for 12,345; DENY `spend_limit` for 100,050,000 against 100,000,000 | "Two probes. An amount no plan line has: denied by in_approved_plan. An amount over the owner's limit: denied by spend_limit. Each deny is a ledger event with the policy version." |
-| 1:30 | Switch actor to `user:engineer_b`, Approve | MOCK reading for 22X-0161/B2 pending; commit 1,844,400 and a work order already rest on it; DENY `role` | "Agents acted on this reading while it is pending, and recorded the dependency. The engineer tries to approve. The policy allows only the owner role: denied." |
+| 0:00 | Terminal: `uv run scripts/adlc_log.py board`, then `tail -n 8` of the log | 37 items (23 done, 13 todo, 1 active); last 8 events | "We ran our own build like our agents. Two people and two coding agents; every task, test and commit is an event in Atlas: 209 so far, 76 commits, 61 test runs. Status moves only from logged events; hooks guard each commit and run the tests before a push." |
+| 0:20 | Nothing | Page, empty feed | "198 bridges on Highway 401, a budget that covers some. Agents do the planning and the spending. Three questions: why this bridge, who allowed it, what was undone when a fact was wrong." |
+| 0:35 | Approve the pending reading | MOCK reading for 22X-0161/B1. After Approve: plan with 190 lines, 249,979,760 of 250,000,000 | "Pause: `approve_condition` needs the owner role and the right region. Both pass. Then the planner solves a mixed-integer program in code: 190 treatments inside the envelope." |
+| 0:55 | Point at the commit row | Commit 1,618,200 for 22X-0161/B1, minor_rehab, benefit 32,364, benefit per dollar 0.02; work order opens | "Programming picks from plan lines ranked by benefit per dollar. The commit passed five checks: role, spend limit, envelope, jurisdiction, and the amount matches a plan line. The work order passed has_commitment." |
+| 1:15 | Point at the two DENY rows | DENY `in_approved_plan` for 12,345; DENY `spend_limit` for 100,050,000 against 100,000,000 | "Two probes. An amount no plan line has: denied by in_approved_plan. An amount over the owner's limit: denied by spend_limit. Each deny is a ledger event with the policy version." |
+| 1:35 | Switch actor to `user:engineer_b`, Approve | MOCK reading for 22X-0161/B2 pending; commit 1,844,400 and a work order already rest on it; DENY `role` | "Agents acted on this reading while it is pending, and recorded the dependency. The engineer tries to approve. The policy allows only the owner role: denied." |
 | 1:55 | Switch to `user:owner_a`, reason "reading disputed, re-inspect", Reject | B2 budget released, B2 work order cancelled, B1 still committed, inspection opened, plan re-solved without B2 | "Pause: reject needs owner, region and a reason. The saga follows the dependency links and undoes only B2's work, newest first. B1 stays. An inspection opens and the plan is re-solved without B2." |
 | 2:30 | Stop | Status `rolled_back`, 0 committed lines | "Stop compensates everything still live, newest first. Every undo is a ledger event." |
 | 2:45 | Nothing | Feed | "The ledger is a SHA-256 hash chain. Edit one event and verify returns false and the position. Why: the plan line. Who: the gate decision. What was undone: the revert." |
@@ -87,8 +90,8 @@ One line per beat.
 | 0:10 | Plan row, 190 lines | "Code solves a mixed-integer program: 190 bridge treatments inside a 250 million envelope." |
 | 0:20 | Commit row, two DENY rows | "Every call passes a policy gate before it runs. Off-plan, denied. Over the limit, denied. Each decision is logged with its policy version." |
 | 0:33 | Reject, B2 reverts, B1 stays | "The owner rejects a reading. Only the work built on it is undone, newest first." |
-| 0:45 | Stop, `rolled_back` | "Stop rolls back the rest. Each step sits in a SHA-256 hash chain; one edit and verify fails." |
-| 0:55 | Title | "Gate, ledger, revert. Load Path." |
+| 0:45 | Stop, `rolled_back` | "Stop rolls back the rest. Each step sits in a SHA-256 hash chain; one edit and verify fails. Gate, ledger, revert." |
+| 0:53 | `adlc_log.py board`, then title | "We ran our own build like our agents: every task, test and commit is an event in Atlas. Load Path." |
 
 ## 6. Commands
 
