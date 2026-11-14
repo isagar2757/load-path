@@ -11,7 +11,7 @@ A public agency chooses which bridges to treat with a budget that never covers a
 ## What was built today
 
 - **Policy gate** (`core/gate.py`): `guarded_call` checks the session state, loads the actor and the active policy for the tool, evaluates the policy checks (`role`, `spend_limit`, `envelope`, `jurisdiction`, `has_commitment`, `in_approved_plan`, `has_reason`), writes a decision event, takes a snapshot, runs the tool and writes an executed event. A missing policy or any error is a deny.
-- **Ledger** (`core/ledger.py`): per-session events with a SHA-256 hash chain; `verify` returns the first sequence number where the chain breaks. The chain detects edits and gaps; it does not prevent them.
+- **Ledger** (`core/ledger.py`): per-session events with a SHA-256 hash chain; `verify(session_id)` returns `(True, None)`, or `(False, n)` with the first position where the seq, the previous hash or the hash is wrong, or where events are missing after the session's `audit_head`. The chain detects edits and gaps; it does not prevent them.
 - **Revert** (`core/revert.py`): a saga stack of compensating actions. `rollback_session` undoes every live entry; `revert_dependants` undoes only the entries that depend on a rejected condition, newest first. Undo functions are idempotent.
 - **Domain systems** (`systems/`): simulated budget ledger, work orders, inspection requests and condition records. Tools: `commit_budget`, `create_work_order`, `request_inspection`, `propose_condition`, `approve_condition`, `reject_condition`. They are registered with the gate and write only through `guarded_call`.
 - **Data seed** (`setup_db.py`, `systems/assets.py`): validators, indexes, principals and policies for database `capital`; assets and approved condition records for 198 Highway 401 bridges (culverts excluded) inside an approximate Toronto bounding box, from the Ontario bridge conditions file.
@@ -51,6 +51,7 @@ uv run pytest -q
 
 - `systems.assets` reads `bridge_condition_open_data_2020_en.csv` from `~/hackathon-data/ontario-bridge-conditions/`, or from the path in `ONTARIO_BRIDGES_PATH`. Download the file from the source under Data and attribution.
 - `run_demo.py` flags: `--reset` clears the run collections and re-runs `setup_db`; `--auto` performs the approve, reject and stop actions without the page; `--llm` turns on LLM mode; `--wait SECONDS` (default 8) is the pause to open the page; `--step SECONDS` (default 1.5) is the pause between steps. It needs at least three assets in region `r1`. `--reset` deletes every session in the database it runs on: set `CAPITAL_DB=capital_<name>` in `.env` to use your own database, then run `setup_db.py` and `systems.assets` for it. Stop at any point ends the run with a rollback.
+- Tamper check: after a run, `uv run python -c "from core import ledger; print(ledger.verify('<session_id>'))"` prints `(True, None)`. Edit any field of one `audit_events` document of that session and it prints `(False, n)`, where `n` is the edited event's position (an edit to seq 8 gives `(False, 8)`).
 - Tests that need Atlas skip when `MONGODB_URI` is unset. Each test uses its own `capital_test_<suffix>` database and drops it.
 
 ## Assumptions
@@ -73,7 +74,7 @@ Treatment gains and costs are assumptions, not sourced figures (`TREATMENTS` in 
 
 ## Data and attribution
 
-Bridge conditions: Ontario Ministry of Transportation, [Bridge conditions](https://data.ontario.ca/dataset/bridge-conditions), file `bridge_condition_open_data_2020_en.csv`, 2021-06-09. Licence: [Open Government Licence - Ontario](https://www.ontario.ca/page/open-government-licence-ontario), version 1.0.
+Bridge conditions: Ontario Ministry of Transportation, [Bridge conditions](https://data.ontario.ca/dataset/bridge-conditions), resource "Data English" (CSV, saved as `bridge_condition_open_data_2020_en.csv`), last updated 2021-06-09. Licence read from the dataset page on 2026-11-14. Licence: [Open Government Licence - Ontario](https://www.ontario.ca/page/open-government-licence-ontario), version 1.0.
 
 Contains information licensed under the Open Government Licence - Ontario.
 
@@ -94,7 +95,6 @@ Versions are read from the installed packages (`uv sync`, 2026-11-14); see [docs
 | pydantic | 2.14.3 | Shapes in `contracts.py` | MIT |
 | scipy | 1.18.1 | `scipy.optimize.milp` | BSD-3-Clause |
 | numpy | 2.5.4 | Arrays for the MILP (installed with scipy) | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
-| scikit-learn | 1.9.1 | Declared in `pyproject.toml`; no code imports it on this branch | BSD-3-Clause |
 | fastapi | 0.162.7 | Web server | MIT |
 | uvicorn | 0.54.0 | ASGI server | BSD-3-Clause |
 | pytest (dev) | 9.2.0 | Tests | MIT |
