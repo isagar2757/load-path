@@ -22,6 +22,8 @@ A public agency chooses which bridges to treat with a budget that never covers a
 - **Planner** (`systems/plans.py`, `engine/plan.py`): the `propose_plan` tool (actor `agent:planner`, undo `supersede_plan`) solves the session's plan over the region's approved conditions, with committed budget lines fixed, and stores it under `<session_id>:<seq>`. The `in_approved_plan` check (`core/gate.py`) allows a commitment only when the session's highest-`seq` non-superseded plan has a line with the same asset and cost. The seeded `commit_budget` policy does not list this check; a policy enforces it only when it adds the check, as `tests/systems/test_plans.py` does. Nothing in the orchestrator calls `plans.replan` yet.
 - **Actor picker** (`web/index.html`): a select with `user:owner_a` and `user:engineer_b`, preset from the `actor` query parameter. Approve and reject send the choice as `actor_id` and Stop sends it as `aborted_by`. The server checks the id format and passes `actor_id` to `guarded_call`, so the gate decides what the actor may do. An empty or unknown actor never approves.
 
+- **LLM mode** (`core/agents.py`): `choose()` gives an agent a goal and a list of options built in code. The model `gemini-3.5-flash-lite` (Gemini API `generateContent`, JSON output) returns an option number and a rationale. The tool and args always come from the code-built option. A missing key, a failed call or an invalid reply returns `options[default]`. On this branch only the tests call `choose()`; `run_demo.py` has no LLM flag and runs the scripted steps.
+
 Design: [spec](docs/superpowers/specs/2026-11-13-audited-agent-design.md).
 
 ## Run steps
@@ -60,14 +62,22 @@ Treatment gains and costs are assumptions, not sourced figures (`TREATMENTS` in 
 - The demo amounts in `run_demo.py` (envelope 120,000; commitments 40,000 and 35,000), the seeded spend limits and the region `r1` in `setup_db.py` are assumptions.
 - The tool takes published condition ratings as given. It makes no safety or engineering judgment and is not engineering or cost data.
 - The solver picks treatments by arithmetic in code. The conditions file's per-year ratings are not loaded.
+- The people (`user:owner_a`, `user:engineer_b`) and the five agent identities in `contracts.py` are fictional.
+- Policies, spend limits and the budget envelope are demo rules, not a real authority matrix.
+- `run_demo.py` proposes no condition ratings. Any rating a demo script proposes is mock input and is labelled as such.
+- Plan output is illustrative. It is not an engineering, safety or funding recommendation.
 
 ## Data and attribution
 
-Bridge conditions: Ontario Ministry of Transportation, [Bridge conditions](https://data.ontario.ca/dataset/bridge-conditions), file `bridge_condition_open_data_2020_en.csv`, 2021-06-09. Licence: Open Government Licence - Ontario.
+Bridge conditions: Ontario Ministry of Transportation, [Bridge conditions](https://data.ontario.ca/dataset/bridge-conditions), file `bridge_condition_open_data_2020_en.csv`, 2021-06-09. Licence: [Open Government Licence - Ontario](https://www.ontario.ca/page/open-government-licence-ontario), version 1.0.
 
 Contains information licensed under the Open Government Licence - Ontario.
 
-The data file is not stored in this repository. The seed keeps rows for highway `401` inside an approximate Toronto bounding box, so it can include structures just over the city line.
+Not affiliated with or endorsed by the Government of Ontario. Data is provided as is.
+
+The data file is not stored in this repository. The seed keeps rows for highway `401` inside an approximate Toronto bounding box, so it can include structures just over the city line. The set is Highway 401 bridges in the Toronto area. The area label (stored as county `TORONTO`) and the bounding box are ours; the source file's COUNTY values for these rows are YORK, PEEL, ONTARIO or blank.
+
+Condition ratings are from 2019 and 2020 inspections (source file dated 2021-06-09). They are not current. `deck_area` is derived (deck length × total width), not a source column.
 
 ## Libraries and licences
 
