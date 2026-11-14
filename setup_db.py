@@ -261,5 +261,6 @@ def setup(db_name: str = c.DB_NAME) -> None:
 
 
 if __name__ == "__main__":
-    setup()
-    print(f"setup_db ok ({c.DB_NAME})")
+    target = db.get_db().name
+    setup(target)
+    print(f"setup_db ok ({target})")
