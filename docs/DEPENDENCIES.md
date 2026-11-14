@@ -14,8 +14,18 @@ One row per item. Update in the same commit that adds, changes or removes it. Ve
 | mongodb (via plugin above) | `adlc.log` writes and reads, ad-hoc queries on the sandbox | Sagar | 2026-11-14 insert and `find` on `adlc.log` |
 | Arad's MongoDB MCP in Cursor | same | Arad | UNVERIFIED: Arad confirms connection |
 
-## Runtime stack (planned, not yet in a manifest)
-Verified once on Sagar's Mac, 2026-11-13, in a throwaway uv env: Python 3.13.3, pymongo 4.20.0, certifi 2026.10.23, scipy 1.18.1, scikit-learn 1.9.1, fastapi 0.162.7, uvicorn 0.54.0, pydantic 2.14.3. Pin in `pyproject.toml` at Stage 0 and replace this paragraph with a table. Arad's machine: UNVERIFIED.
+## Runtime stack (`pyproject.toml`, locked in `uv.lock`)
+Python 3.13.3. Versions and licences read from installed package metadata after `uv sync`, 2026-11-14 (Sagar). Arad's machine: UNVERIFIED (`uv sync && uv run pytest -q`).
+| Package | Version | Licence | Purpose | Owner |
+|---|---|---|---|---|
+| pymongo | 4.20.0 | Apache-2.0 | Atlas driver | both |
+| certifi | 2026.10.23 | MPL-2.0 | CA bundle passed as `tlsCAFile` | both |
+| pydantic | 2.14.3 | MIT | Shapes in `contracts.py` | both |
+| scipy | 1.18.1 | BSD-3-Clause (read from `LICENSE.txt`; bundled components list their own licences there) | `scipy.optimize.milp` (HiGHS) | Arad |
+| scikit-learn | 1.9.1 | BSD-3-Clause | Random forest (Stage 5) | Arad |
+| fastapi | 0.162.7 | MIT | Web server, SSE feed | Arad |
+| uvicorn | 0.54.0 | BSD-3-Clause | ASGI server | Arad |
+| pytest (dev) | 9.2.0 | MIT | Tests | both |
 
 ## Tooling
 | Tool | Version | Purpose |
