@@ -40,6 +40,7 @@ def test_setup_db_runs_twice_without_error(test_db):
                          ("reject_condition", ["role", "jurisdiction", "has_reason"])]:
         assert active[tool]["roles"] == ["owner"]
         assert [ch["name"] for ch in active[tool]["checks"]] == checks
+    assert active["request_inspection"]["roles"] == ["orchestrator"]
 
 
 @needs_atlas
