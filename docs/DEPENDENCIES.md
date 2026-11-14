@@ -11,7 +11,7 @@ One row per item. Update in the same commit that adds, changes or removes it. Ve
 ## MCP servers
 | Server | Used for | Owner | Verified |
 |---|---|---|---|
-| mongodb (via plugin above) | `adlc.log` writes and reads, ad-hoc queries on the sandbox | Sagar | 2026-11-14 insert and `find` on `adlc.log` |
+| mongodb (via plugin above) | `adlc.log` / `adlc.items` writes and reads, ad-hoc queries on the sandbox | Sagar | 2026-11-14 insert and `find` on `adlc.log` |
 | Arad's MongoDB MCP in Cursor | same | Arad | UNVERIFIED: Arad confirms connection |
 
 ## Runtime stack (`pyproject.toml`, locked in `uv.lock`)
@@ -32,7 +32,8 @@ Python 3.13.3. Versions and licences read from installed package metadata after 
 |---|---|---|
 | uv | 0.13.8 | Python and env management |
 | git hooks (`.githooks/`, `scripts/check.sh`) | n/a | pre-commit, commit-msg, post-commit (Mongo log), pre-push; no external dependency |
-| `scripts/adlc_log.py` | n/a | Shared log client; uv inline deps: pymongo>=4.7, certifi |
+| `scripts/adlc_log.py` | n/a | Shared ADLC client: status in `adlc.items` (`board`, `item`), events in `adlc.log`; uv inline deps: pymongo>=4.7, certifi |
+| Skill `adlc-log` (`.claude/skills/`), SessionStart hook (`.claude/settings.json`), Cursor rule `adlc.mdc` | n/a | Agents read inbox + board at start, log events that move status; verified 2026-11-14 by running the hook command |
 | GitHub Actions `ci.yml` | actions/checkout@v4, astral-sh/setup-uv@v5 | Same checks as the hooks on every PR; pytest when `tests/` exists |
 | Branch protection on `main` | n/a | PR required, `checks` and `tests` must pass |
 
