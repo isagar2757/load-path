@@ -98,7 +98,9 @@ def main():
     i = s.add_parser("item-of")
     i.add_argument("branch")
     s.add_parser("check")
-    s.add_parser("commit-hook")
+    h = s.add_parser("commit-hook")
+    h.add_argument("--sha")
+    h.add_argument("--branch")
     x = p.parse_args()
 
     if x.cmd == "add":
@@ -123,10 +125,10 @@ def main():
         c.delete_one({"_id": i})
         print("atlas ok; adlc.log writable")
     elif x.cmd == "commit-hook":
-        sha = git("rev-parse", "HEAD")
-        msg = git("log", "-1", "--format=%s")
-        files = git("show", "--name-only", "--format=", "HEAD").splitlines()
-        item = item_of(git("rev-parse", "--abbrev-ref", "HEAD"))
+        sha = x.sha or git("rev-parse", "HEAD")
+        msg = git("log", "-1", "--format=%s", sha)
+        files = git("show", "--name-only", "--format=", sha).splitlines()
+        item = item_of(x.branch or git("rev-parse", "--abbrev-ref", "HEAD"))
         add({"item": item, "event": "commit", "tool": "git", "actor": "human", "phase": None,
              "author": author(strict=False),
              "summary": msg, "commit_sha": sha[:7], "files": files[:50]})
