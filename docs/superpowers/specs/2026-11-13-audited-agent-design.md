@@ -1,6 +1,6 @@
 # Audited capital-program agents on Atlas — design (T4)
 
-Status: approved v2 · written before the event, imported 2026-11-14 · no code existed before Sat 10:45.
+Status: built (event build, 2026-11-14) · approved v2, written before the event · no code existed before Sat 10:45. The sections below are the pre-event design; [Built and not built](#built-and-not-built) records what the code does.
 Problem statement: **1. Agents You Can Audit**. Build window: Sat 2026-11-14 10:45 → 17:00 EST.
 Guards: [AGENTS.md](../../../AGENTS.md). Plan: [event build](../plans/2026-11-14-event-build.md). Formulas: [formulas.md](../../formulas.md).
 
@@ -20,8 +20,13 @@ schema or screen · anything from an employer · a dashboard as the main feature
 ## Open questions
 | Question | State |
 |---|---|
-| LLM access from organisers | UNVERIFIED. Scripted mode makes the demo independent of it |
 | Simulated work-order and budget systems count as "real actions" | UNVERIFIED. Ask a MongoDB judge on site |
+
+Closed: LLM access. The build calls the Gemini API with `LLM_API_KEY` (`core/agents/llm.py`, `run_demo.py --llm`); scripted mode is the default and the tested path.
+
+## Built and not built
+Built: policy gate (`core/gate.py`), hash-chained ledger with `verify` (`core/ledger.py`), dependency-scoped revert and full rollback (`core/revert.py`), orchestrator and stop watcher (`core/orchestrator.py`), Intake, Planner, Programming and Work Order agents (`core/agents/`), simulated budget, work-order, inspection and condition systems (`systems/`), MILP and re-solve (`engine/plan.py`, `systems/plans.py`), control page with approve/reject, actor picker and stop (`web/`), demo script (`run_demo.py`).
+Not built: Verifier agent, random forest condition check, policy replay, policy edit on the page, writes to `program_lines` (named in `contracts.py`, no tool writes it), multi-document transactions in revert (each undo is a single idempotent update). Data: the Ontario bridge conditions file (Highway 401, Toronto area), not the NBI.
 
 ## Architecture
 **Deterministic code (never an LLM):**
