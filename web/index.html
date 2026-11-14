@@ -2,24 +2,86 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>load-path</title>
   <style>
-    :root { color-scheme: light; font-family: ui-sans-serif, system-ui, sans-serif; }
-    body { margin: 1.5rem; max-width: 52rem; }
-    #feed { list-style: none; padding: 0; margin: 1rem 0; }
-    #feed li { padding: 0.5rem 0; border-bottom: 1px solid #ddd; font-family: ui-monospace, monospace; font-size: 0.85rem; white-space: pre-wrap; }
-    .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
-    button { padding: 0.4rem 0.9rem; }
-    #status { color: #444; }
-    #conditions { list-style: none; padding: 0; }
-    #conditions li { padding: 0.4rem 0; border-bottom: 1px solid #ddd; }
+    :root {
+      --paper: #eceff1; --panel: #ffffff; --ink: #0d1b2a; --muted: #46566a; --rule: #0d1b2a;
+      --allow: #0b6b3a; --deny: #b3141b; --warn: #8a4b00; --focus: #0050d0;
+      font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--paper); color: var(--ink); font-size: 18px; line-height: 1.35; display: flex; flex-direction: column; }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+    button { font: inherit; font-weight: 700; padding: 0.35rem 1rem; border: 2px solid var(--ink); background: var(--panel); color: var(--ink); cursor: pointer; }
+    button:hover { background: var(--ink); color: var(--panel); }
+    input, select { font: inherit; padding: 0.3rem 0.5rem; border: 2px solid var(--ink); background: var(--panel); color: var(--ink); }
+    .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+    header { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; padding: 0.6rem 1.25rem; background: var(--ink); color: #fff; }
+    header h1 { margin: 0; font-size: 1.5rem; letter-spacing: 0.01em; }
+    header label { display: flex; gap: 0.5rem; align-items: center; font-weight: 600; }
+    header input, header select { border-color: #fff; }
+    #session { width: 17rem; }
+    #sess-status { font-weight: 800; padding: 0.15rem 0.7rem; border: 2px solid #fff; }
+    #sess-status[data-s="running"] { background: #fff; color: var(--allow); }
+    #sess-status[data-s="abort_requested"], #sess-status[data-s="aborted"] { background: var(--deny); border-color: var(--deny); }
+    #sess-status[data-s="reverting"] { background: #ffb020; color: var(--ink); border-color: #ffb020; }
+    #stop { background: var(--deny); border-color: var(--deny); color: #fff; margin-left: auto; font-size: 1.1rem; padding: 0.4rem 1.6rem; }
+    #stop:hover { background: #fff; color: var(--deny); }
+    #status { flex-basis: 100%; font-size: 0.95rem; min-height: 1.3em; }
+
+    main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 1rem; padding: 1rem 1.25rem; }
+    section { background: var(--panel); border: 2px solid var(--rule); display: flex; flex-direction: column; min-height: 0; }
+    section > h2 { margin: 0; padding: 0.3rem 0.75rem; font-size: 1.05rem; border-bottom: 2px solid var(--rule); display: flex; justify-content: space-between; gap: 1rem; }
+    section > h2 span { font-weight: 500; color: var(--muted); }
+    .body { overflow-y: auto; min-height: 0; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { padding: 0.4rem 0.75rem; border-bottom: 1px solid #b8c2cc; }
+    .empty { padding: 0.5rem 0.75rem; color: var(--muted); }
+
+    #side { display: flex; flex-direction: column; gap: 0.75rem; min-height: 0; overflow-y: auto; padding-right: 2px; }
+    #side section { flex: none; }
+    #side .body { max-height: 11.5rem; }
+
+    /* feed */
+    #feed li { display: grid; grid-template-columns: 5.2rem 5.4rem 1fr; gap: 0.1rem 0.75rem; align-items: baseline; }
+    #feed .t { color: var(--muted); font-size: 0.9rem; }
+    .mark { font-weight: 800; text-align: center; padding: 0.05rem 0.3rem; color: #fff; }
+    .mark.allow { background: var(--allow); }
+    .mark.deny { background: var(--deny); }
+    .mark.info { background: none; color: var(--muted); font-weight: 600; text-align: left; padding: 0; }
+    #feed .what { font-weight: 700; }
+    #feed .who { color: var(--muted); font-weight: 500; }
+    #feed .reason { grid-column: 3; color: var(--deny); font-weight: 700; }
+    #feed .why { grid-column: 3; font-size: 0.95rem; border-left: 4px solid var(--ink); padding-left: 0.6rem; }
+    #feed li.denied { background: #fbeaea; }
+
+    /* conditions */
+    #conditions li { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    #conditions input { width: 8rem; }
+    #conditions .asset { font-weight: 700; flex-basis: 100%; }
+
+    table { width: 100%; border-collapse: collapse; }
+    td, th { padding: 0.25rem 0.75rem; text-align: left; border-bottom: 1px solid #b8c2cc; }
+    th { font-weight: 600; color: var(--muted); font-size: 0.9rem; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr.gone td { text-decoration: line-through; color: var(--muted); }
+    .tag { font-weight: 800; text-decoration: none; display: inline-block; }
+    tr.gone .tag { text-decoration: none; color: var(--deny); }
+    tfoot td { font-weight: 800; border-top: 2px solid var(--rule); border-bottom: 0; }
+    .over { color: var(--deny); }
+
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; overflow-y: auto; } #feed-sec { min-height: 24rem; } }
+    @media (prefers-reduced-motion: no-preference) { #feed li.fresh { animation: flash 1.2s ease-out; } @keyframes flash { from { background: #ffe9a8; } } }
   </style>
 </head>
 <body>
-  <h1>load-path</h1>
-  <p>Session feed, stop, and condition approval. Control surface only.</p>
-  <div class="row">
-    <label>session_id <input id="session" size="28" /></label>
+  <header>
+    <h1>load-path</h1>
+    <label>session_id <input id="session" class="mono" /></label>
+    <span id="sess-status">no session</span>
     <label>actor
       <select id="actor">
         <option value="">choose actor</option>
@@ -28,43 +90,95 @@
       </select>
     </label>
     <button type="button" id="stop">Stop</button>
-    <span id="status"></span>
-  </div>
-  <h2>Pending conditions</h2>
-  <ul id="conditions"></ul>
-  <h2>Feed</h2>
-  <ul id="feed"></ul>
+    <span id="status" role="status"></span>
+  </header>
+  <main>
+    <section id="feed-sec">
+      <h2>Feed <span>every tool call, newest first</span></h2>
+      <div class="body"><ul id="feed"></ul></div>
+    </section>
+    <div id="side">
+      <section>
+        <h2>Pending conditions</h2>
+        <div class="body"><ul id="conditions"></ul></div>
+      </section>
+      <section>
+        <h2>Active plan <span id="plan-meta"></span></h2>
+        <div class="body"><table id="plan"></table></div>
+      </section>
+      <section>
+        <h2>Commitments</h2>
+        <div class="body"><table id="budget"></table></div>
+      </section>
+      <section>
+        <h2>Work orders</h2>
+        <div class="body"><table id="orders"></table></div>
+      </section>
+      <section>
+        <h2>Inspection requests</h2>
+        <div class="body"><table id="inspections"></table></div>
+      </section>
+    </div>
+  </main>
   <script>
     const params = new URLSearchParams(location.search);
     const sessionInput = document.getElementById("session");
     const feed = document.getElementById("feed");
     const statusEl = document.getElementById("status");
-    let source = null;
-
+    const sessEl = document.getElementById("sess-status");
     const actorInput = document.getElementById("actor");
+    let source = null;
+    let timer = null;
 
     sessionInput.value = params.get("session_id") || "";
     actorInput.value = params.get("actor") || "";
 
+    const money = (n) => Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const sid = () => sessionInput.value.trim();
+    const base = () => "/sessions/" + encodeURIComponent(sid());
+
+    function el(tag, text, cls) {
+      const e = document.createElement(tag);
+      if (text !== undefined && text !== null) e.textContent = text;
+      if (cls) e.className = cls;
+      return e;
+    }
+
+    function feedRow(ev, fresh) {
+      const li = el("li");
+      const isDecision = ev.decision === "allow" || ev.decision === "deny";
+      if (ev.decision === "deny") li.classList.add("denied");
+      if (fresh) li.classList.add("fresh");
+      const t = ev.ts ? new Date(ev.ts).toLocaleTimeString("en-GB") : "";
+      li.append(el("span", t, "t mono"));
+      li.append(isDecision ? el("span", ev.decision.toUpperCase(), "mark " + ev.decision)
+                           : el("span", ev.type || "event", "mark info"));
+      const what = el("span", null, "what");
+      what.append(el("span", ev.tool || ev.type || "", "mono"), el("span", "  " + (ev.actor_id || ""), "who"));
+      li.append(what);
+      if (ev.reason) li.append(el("div", ev.reason, "reason"));
+      if (ev.rationale) li.append(el("div", ev.rationale, "why"));
+      return li;
+    }
+
     function connect() {
-      const sid = sessionInput.value.trim();
-      if (!sid) { statusEl.textContent = "set session_id"; return; }
+      if (!sid()) { statusEl.textContent = "set session_id"; return; }
       if (source) source.close();
+      feed.replaceChildren();
       statusEl.textContent = "listening…";
-      source = new EventSource("/events?session_id=" + encodeURIComponent(sid));
+      source = new EventSource("/events?session_id=" + encodeURIComponent(sid()));
       source.onmessage = (ev) => {
-        const li = document.createElement("li");
-        li.textContent = ev.data;
-        feed.prepend(li);
-        if (JSON.parse(ev.data).tool?.endsWith("_condition")) loadConditions();
+        const doc = JSON.parse(ev.data);
+        feed.prepend(feedRow(doc, true));
+        loadState();
+        if (doc.tool?.endsWith("_condition")) loadConditions();
       };
       source.onerror = () => { statusEl.textContent = "stream error / reconnecting"; };
     }
 
     const conditionsEl = document.getElementById("conditions");
     async function decide(action, body) {
-      const sid = sessionInput.value.trim();
-      const r = await fetch("/sessions/" + encodeURIComponent(sid) + "/conditions/" + action, {
+      const r = await fetch(base() + "/conditions/" + action, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actor_id: actorInput.value, ...body }),
@@ -73,47 +187,104 @@
       statusEl.textContent = r.ok ? (action + " ok: " + body.condition_id)
         : (action + " refused (" + r.status + "): " + JSON.stringify(out.detail));
       loadConditions();
+      loadState();
     }
 
     async function loadConditions() {
-      const sid = sessionInput.value.trim();
-      if (!sid) return;
-      const r = await fetch("/sessions/" + encodeURIComponent(sid) + "/conditions");
-      conditionsEl.replaceChildren();
+      if (!sid()) return;
+      const r = await fetch(base() + "/conditions");
       if (!r.ok) { statusEl.textContent = "conditions failed: " + r.status; return; }
-      for (const c of await r.json()) {
-        const li = document.createElement("li");
-        li.className = "row";
-        const label = document.createElement("span");
-        label.textContent = c.asset_id + " · " + c.year + " · rating " + c.rating;
-        const approve = document.createElement("button");
+      const rows = await r.json();
+      const sig = rows.map((c) => c._id).join("|");
+      if (sig === conditionsEl.dataset.sig) return;  // keep a half-typed reject reason through polling
+      conditionsEl.dataset.sig = sig;
+      conditionsEl.replaceChildren();
+      if (!rows.length) conditionsEl.append(el("li", "None pending.", "empty"));
+      for (const c of rows) {
+        const li = el("li");
+        const label = el("span", c.asset_id + " · " + c.year + " · rating " + c.rating, "asset");
+        const approve = el("button", "Approve");
         approve.type = "button";
-        approve.textContent = "Approve";
         approve.addEventListener("click", () => decide("approve", { condition_id: c._id }));
-        const reason = document.createElement("input");
+        const reason = el("input");
         reason.placeholder = "reason";
-        const reject = document.createElement("button");
+        reason.setAttribute("aria-label", "reject reason for " + c.asset_id);
+        const reject = el("button", "Reject");
         reject.type = "button";
-        reject.textContent = "Reject";
         reject.addEventListener("click", () => decide("reject", { condition_id: c._id, reason: reason.value }));
         li.append(label, approve, reason, reject);
         conditionsEl.append(li);
       }
     }
 
-    function start() { connect(); loadConditions(); }
+    function fill(table, head, rows, empty, foot) {
+      table.replaceChildren();
+      if (!rows.length) { const tr = el("tr"); const td = el("td", empty, "empty"); td.colSpan = head.length; tr.append(td); table.append(tr); return; }
+      const hr = el("tr");
+      head.forEach((h, i) => hr.append(el("th", h, h.endsWith("$") ? "num" : "")));
+      hr.querySelectorAll("th").forEach((th) => { th.textContent = th.textContent.replace("$", ""); });
+      const th = el("thead");
+      th.append(hr);
+      table.append(th);
+      const tb = el("tbody");
+      for (const { cells, gone } of rows) {
+        const tr = el("tr", null, gone ? "gone" : "");
+        cells.forEach((c, i) => tr.append(el("td", c, head[i].endsWith("$") ? "num" : "")));
+        tb.append(tr);
+      }
+      table.append(tb);
+      if (foot) {
+        const tf = el("tfoot"), tr = el("tr");
+        foot.forEach((c, i) => { const td = el("td", c.text, (head[i].endsWith("$") ? "num " : "") + (c.cls || "")); tr.append(td); });
+        tf.append(tr); table.append(tf);
+      }
+    }
+
+    const shortKey = (k) => String(k).split(":").pop();
+
+    async function loadState() {
+      if (!sid()) return;
+      const r = await fetch(base() + "/state");
+      if (!r.ok) { sessEl.textContent = "not found"; sessEl.dataset.s = ""; return; }
+      const s = await r.json();
+      sessEl.textContent = s.session.status;
+      sessEl.dataset.s = s.session.status;
+      const env = s.session.budget_envelope;
+      const plan = s.plan;
+      document.getElementById("plan-meta").textContent = plan ? ("seq " + plan.seq + " · " + plan.status) : "";
+      fill(document.getElementById("plan"), ["Asset", "Treatment", "Cost$"],
+        plan ? plan.lines.map((l) => ({ cells: [l.asset_id, l.treatment, money(l.cost)] })) : [],
+        "No plan yet.",
+        plan && [{ text: "Total of " + money(env) }, { text: "" },
+                 { text: money(plan.total_cost), cls: plan.total_cost > env ? "over" : "" }]);
+      fill(document.getElementById("budget"), ["Asset", "Amount$", "Status"],
+        s.budget.map((b) => ({ cells: [b.asset_id, money(b.amount), b.status.toUpperCase()], gone: b.status !== "committed" })),
+        "No commitments.");
+      fill(document.getElementById("orders"), ["Order", "Asset", "Status"],
+        s.work_orders.map((w) => ({ cells: ["#" + shortKey(w._id), w.asset_id, w.status.toUpperCase()], gone: w.status === "cancelled" })),
+        "No work orders.");
+      fill(document.getElementById("inspections"), ["Request", "Asset", "Condition"],
+        s.inspections.map((i) => ({ cells: ["#" + shortKey(i._id), i.asset_id, i.condition_id] })),
+        "No inspection requests.");
+    }
+
+    function start() {
+      connect(); loadConditions(); loadState();
+      clearInterval(timer);
+      timer = setInterval(() => { loadState(); loadConditions(); }, 2000);
+    }
     sessionInput.addEventListener("change", start);
     if (sessionInput.value) start();
 
     document.getElementById("stop").addEventListener("click", async () => {
-      const sid = sessionInput.value.trim();
-      if (!sid) return;
-      const r = await fetch("/sessions/" + encodeURIComponent(sid) + "/stop", {
+      if (!sid()) return;
+      const r = await fetch(base() + "/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ aborted_by: actorInput.value }),
       });
       statusEl.textContent = r.ok ? "abort_requested" : ("stop failed: " + r.status);
+      loadState();
     });
   </script>
 </body>

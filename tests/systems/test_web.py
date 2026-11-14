@@ -217,3 +217,52 @@ def test_missing_or_unknown_actor_never_approves(conditions_world, body):
     r = client.post(f"/sessions/{sid}/conditions/approve", json={"condition_id": CID, **body})
     assert r.status_code in (403, 422)
     assert _condition(d) == "pending"
+
+
+# P1: read-only state for the page's side panels.
+def test_session_state_reads_plan_budget_orders_inspections(world):
+    from web.server import create_app
+
+    d, sid = world
+    d.plans.insert_many([
+        {"_id": f"{sid}:2", "session_id": sid, "seq": 2, "superseded": True, "status": "optimal",
+         "objective": 1.0, "lines": [{"asset_id": "b1", "treatment": "old", "cost": 5.0, "benefit": 1.0}]},
+        {"_id": f"{sid}:9", "session_id": sid, "seq": 9, "superseded": False, "status": "optimal",
+         "objective": 7.0, "lines": [{"asset_id": "b1", "treatment": "overlay", "cost": 30.5, "benefit": 4.0},
+                                     {"asset_id": "b2", "treatment": "patch", "cost": 12.0, "benefit": 3.0}]},
+        {"_id": "other:1", "session_id": "other", "seq": 1, "superseded": False, "status": "optimal",
+         "objective": 0.0, "lines": []},
+    ])
+    d.budget_ledger.insert_many([
+        {"_id": f"{sid}:11", "session_id": sid, "asset_id": "b1", "amount": 30.5, "status": "released"},
+        {"_id": "other:3", "session_id": "other", "asset_id": "b1", "amount": 1.0, "status": "committed"},
+    ])
+    d.work_orders.insert_one({"_id": f"{sid}:12", "session_id": sid, "asset_id": "b1",
+                              "budget_id": f"{sid}:11", "status": "cancelled"})
+    d.inspection_requests.insert_many([
+        {"_id": f"{sid}:20", "condition_id": "b1:2026", "asset_id": "b1"},
+        {"_id": "other:4", "condition_id": "x", "asset_id": "x"},
+    ])
+    client = TestClient(create_app(database=d))
+
+    r = client.get(f"/sessions/{sid}/state")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["session"] == {"status": "running", "budget_envelope": 100.0}
+    assert body["plan"]["seq"] == 9
+    assert [ln["treatment"] for ln in body["plan"]["lines"]] == ["overlay", "patch"]
+    assert body["plan"]["total_cost"] == 42.5
+    assert [b["_id"] for b in body["budget"]] == [f"{sid}:11"]
+    assert body["budget"][0]["status"] == "released"
+    assert [w["_id"] for w in body["work_orders"]] == [f"{sid}:12"]
+    assert [i["_id"] for i in body["inspections"]] == [f"{sid}:20"]
+    assert client.get("/sessions/000000000000000000000000/state").status_code == 404
+
+
+def test_session_state_without_plan(world):
+    from web.server import create_app
+
+    d, sid = world
+    body = TestClient(create_app(database=d)).get(f"/sessions/{sid}/state").json()
+    assert body["plan"] is None
+    assert body["budget"] == body["work_orders"] == body["inspections"] == []
