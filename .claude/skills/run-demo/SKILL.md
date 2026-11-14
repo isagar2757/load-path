@@ -29,7 +29,7 @@ uv run python run_demo.py --reset                # terminal 2: interactive; prin
 uv run python run_demo.py --reset --auto         # no page; human actions go through the same server routes
 uv run python run_demo.py --reset --auto --llm   # agents pick from code-built options and write the rationale
 ```
-Add `--wait 0 --step 0` to skip the pauses. The script prints one line per beat and ends with `demo ok`; it
+Add `--wait 0 --step 0` to skip the pauses, or `--pause` for a live demo (Enter starts each agent section). The script prints one line per beat and ends with `demo ok`; it
 exits 1 and names the beat when an allow, deny or end state differs.
 
 ## Interactive click sequence (page opened from the printed URL)

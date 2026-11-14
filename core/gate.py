@@ -23,6 +23,7 @@ class Registered(NamedTuple):
 
 
 REGISTRY: dict[str, Registered] = {}
+SESSION_DENY = "session: status is"   # deny reason prefix when the session is not `running`
 
 
 def register_tool(name, fn, snapshot, undo, undo_tool) -> None:
@@ -142,7 +143,7 @@ def _evaluate(d, session_id: str, actor_id: str, tool: str, args: dict, ctx: dic
         raise Deny("session: not found")
     ctx["session"] = session
     if session["status"] != "running":
-        raise Deny(f"session: status is {session['status']}")
+        raise Deny(f"{SESSION_DENY} {session['status']}")
     if tool not in REGISTRY:
         raise Deny(f"tool: {tool} is not registered")
     actor = d.principals.find_one({"_id": actor_id})

@@ -16,7 +16,7 @@ from pymongo import ReturnDocument
 
 import contracts
 import db as dbmod
-from core import agents, ledger, revert
+from core import agents, gate, ledger, revert
 from systems import plans
 
 RUNNING, REVERTING, ABORT_REQUESTED, ROLLING_BACK, ROLLED_BACK, _, FAILED = contracts.SESSION_STATUS
@@ -89,47 +89,57 @@ class Orchestrator:
             out = revert.rollback_session(self.sid, db=self.d)
             self._end(ROLLING_BACK, FAILED if out["failed"] else ROLLED_BACK, out)
 
-    def submit(self, step: agents.Step, meta: dict | None = None) -> contracts.ToolResult | None:
-        """Queue the step as a task, claim it, let its agent act through the gate and record the result.
-
-        `meta` (how the step was chosen) is stored in the task input. None when the session is not `running`.
-        A tool error after an allow fails the session (no automatic retry of a write).
-        """
-        with self._lock:
-            if self._status() != RUNNING:
-                return None
-            self.d.tasks.insert_one(contracts.Task(
-                session_id=self.sid, type=step.tool, agent_id=contracts.TOOLS[step.tool].actor, status=QUEUED,
-                input={"args": step.args, "rationale": step.rationale, "depends_on": list(step.depends_on),
-                       **(meta or {})},
-                created_at=datetime.now(UTC)).model_dump())
-            task = claim(self.d, self.sid)
-            r = agents.act(self.d, task)
-            self.d.tasks.update_one({"_id": task["_id"]}, {"$set": {
-                "status": TASK_FAILED if r.result is None else DONE, "output": r.result}})
-            if r.allowed and r.result is None:
-                self._end(RUNNING, FAILED, {"reason": r.reason})
+    def _act(self, step: agents.Step, meta: dict | None) -> contracts.ToolResult:
+        """Caller holds the lock. Queue the step as a task, claim it, act through the gate, record the result."""
+        self.d.tasks.insert_one(contracts.Task(
+            session_id=self.sid, type=step.tool, agent_id=contracts.TOOLS[step.tool].actor, status=QUEUED,
+            input={"args": step.args, "rationale": step.rationale, "depends_on": list(step.depends_on),
+                   **(meta or {})},
+            created_at=datetime.now(UTC)).model_dump())
+        task = claim(self.d, self.sid)
+        r = agents.act(self.d, task)
+        self.d.tasks.update_one({"_id": task["_id"]}, {"$set": {
+            "status": TASK_FAILED if r.result is None else DONE, "output": r.result}})
+        if r.allowed and r.result is None:   # tool error after an allow: no automatic retry of a write
+            self._end(RUNNING, FAILED, {"reason": r.reason})
         return r
+
+    def submit(self, step: agents.Step) -> contracts.ToolResult | None:
+        """Send one step through the gate as a task. None when the session is not `running`."""
+        with self._lock:
+            return self._act(step, None) if self._status() == RUNNING else None
 
     def run_agents(self, agent_modules: list, scope: list[str], use_llm: bool,
                    max_rounds: int) -> Iterator[tuple[agents.Step, dict, contracts.ToolResult]]:
         """Turn loop: each round asks each agent in order for one step and submits it, yielding (step, meta, result).
 
+        How the step was chosen (`meta`) is stored in the task input. A turn waits while a rejection is being
+        reverted. A person may act while an agent chooses, so the step is submitted only if the agent still
+        offers it once the lock is held; otherwise it is dropped and the loop goes on.
         Ends when a round passes with no agent offering a step, the session is not `running`, a step is denied
-        or fails (a person decides), or `max_rounds` is reached.
+        by policy or fails (a person decides), or `max_rounds` is reached.
         """
         for _ in range(max_rounds):
             idle = True
             for agent in agent_modules:
+                while (status := self._status()) == REVERTING:
+                    time.sleep(self.poll)
+                if status != RUNNING:
+                    return
                 step, meta = agents.choose(agent, self.d, self.sid, scope, use_llm)
                 if step is None:
                     continue
-                r = self.submit(step, meta)
-                if r is None:
-                    return
                 idle = False
+                with self._lock:
+                    if self._status() != RUNNING or not any(
+                            (o.tool, o.args, o.depends_on) == (step.tool, step.args, step.depends_on)
+                            for o in agent.options(self.d, self.sid, scope)):
+                        continue
+                    r = self._act(step, meta)
                 yield step, meta, r
-                if r.result is None:
+                # A deny because the session left `running` under the step is not the agent's to answer for:
+                # the next turn waits for the revert or ends the loop. Any other deny or failure ends the pass.
+                if r.result is None and not (r.reason or "").startswith(gate.SESSION_DENY):
                     return
             if idle:
                 return
