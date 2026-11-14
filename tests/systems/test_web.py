@@ -185,3 +185,35 @@ def test_index_has_condition_controls():
     assert "/conditions" in html
     assert 'decide("approve"' in html
     assert 'decide("reject"' in html
+
+
+# A8: actor picker. The chosen actor is sent with every action; the gate decides, not the page.
+def test_index_has_actor_picker():
+    html = (Path(__file__).resolve().parents[2] / "web" / "index.html").read_text()
+    assert 'id="actor"' in html
+    assert 'value="user:owner_a"' in html
+    assert 'value="user:engineer_b"' in html
+    assert 'get("actor")' in html
+
+
+@needs_atlas
+def test_engineer_approve_denied_and_logged(conditions_world):
+    d, sid, client = conditions_world
+    d.principals.insert_one(contracts.Principal(
+        id="user:engineer_b", kind="human", roles=["engineer"], region="r1",
+        spend_limit=0, active=True).model_dump(by_alias=True))
+    r = client.post(f"/sessions/{sid}/conditions/approve",
+                    json={"actor_id": "user:engineer_b", "condition_id": CID})
+    assert r.status_code == 403
+    assert _condition(d) == "pending"
+    ev = d.audit_events.find_one({"session_id": sid, "type": "decision"})
+    assert (ev["decision"], ev["actor_id"], ev["tool"]) == ("deny", "user:engineer_b", "approve_condition")
+
+
+@needs_atlas
+@pytest.mark.parametrize("body", [{}, {"actor_id": ""}, {"actor_id": "user:ghost"}])
+def test_missing_or_unknown_actor_never_approves(conditions_world, body):
+    d, sid, client = conditions_world
+    r = client.post(f"/sessions/{sid}/conditions/approve", json={"condition_id": CID, **body})
+    assert r.status_code in (403, 422)
+    assert _condition(d) == "pending"

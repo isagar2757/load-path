@@ -20,6 +20,13 @@
   <p>Session feed, stop, and condition approval. Control surface only.</p>
   <div class="row">
     <label>session_id <input id="session" size="28" /></label>
+    <label>actor
+      <select id="actor">
+        <option value="">choose actor</option>
+        <option value="user:owner_a">user:owner_a</option>
+        <option value="user:engineer_b">user:engineer_b</option>
+      </select>
+    </label>
     <button type="button" id="stop">Stop</button>
     <span id="status"></span>
   </div>
@@ -34,7 +41,10 @@
     const statusEl = document.getElementById("status");
     let source = null;
 
+    const actorInput = document.getElementById("actor");
+
     sessionInput.value = params.get("session_id") || "";
+    actorInput.value = params.get("actor") || "";
 
     function connect() {
       const sid = sessionInput.value.trim();
@@ -52,14 +62,12 @@
     }
 
     const conditionsEl = document.getElementById("conditions");
-    const ACTOR = "user:owner_a";
-
     async function decide(action, body) {
       const sid = sessionInput.value.trim();
       const r = await fetch("/sessions/" + encodeURIComponent(sid) + "/conditions/" + action, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actor_id: ACTOR, ...body }),
+        body: JSON.stringify({ actor_id: actorInput.value, ...body }),
       });
       const out = await r.json();
       statusEl.textContent = r.ok ? (action + " ok: " + body.condition_id)
@@ -103,7 +111,7 @@
       const r = await fetch("/sessions/" + encodeURIComponent(sid) + "/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aborted_by: "user:owner_a" }),
+        body: JSON.stringify({ aborted_by: actorInput.value }),
       });
       statusEl.textContent = r.ok ? "abort_requested" : ("stop failed: " + r.status);
     });
