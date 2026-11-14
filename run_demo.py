@@ -3,7 +3,8 @@
     uv run python run_demo.py --reset            # then open the printed URL and press Stop
     uv run python run_demo.py --reset --auto-stop
 
-Amounts are assumptions (README). Every domain write goes through `guarded_call`.
+Amounts are assumptions (README). The orchestrator relays the script; every domain write goes through
+`guarded_call`.
 """
 import argparse
 import time
@@ -15,7 +16,8 @@ import contracts as c
 import db as dbmod
 import setup_db
 import systems
-from core import gate, revert
+from core import orchestrator
+from core.agents import Step
 
 RUN_COLLECTIONS = ("sessions", "tasks", "audit_events", "saga_stack", "budget_ledger", "work_orders",
                    "inspection_requests")
@@ -29,10 +31,6 @@ def reset(d) -> None:
     for name in RUN_COLLECTIONS:
         d[name].delete_many({})
     setup_db.setup(d.name)
-
-
-def _set_status(d, sid: str, status: str) -> None:
-    d.sessions.update_one({"_id": ObjectId(sid)}, {"$set": {"status": status, "updated_at": datetime.now(UTC)}})
 
 
 def _show(r: c.ToolResult, label: str) -> None:
@@ -62,33 +60,28 @@ def main() -> None:
     print(f"session {sid}\nopen http://127.0.0.1:8000/?session_id={sid}")
     time.sleep(a.wait)
 
-    commits = []
-    for asset, amount in zip(assets, COMMITS):
-        r = gate.guarded_call(sid, "agent:programming", "commit_budget", {"asset_id": asset, "amount": amount},
-                              f"commit {amount:.0f} for {asset}", db=d)
-        _show(r, f"commit_budget {asset} {amount:.0f}")
-        commits.append(r)
+    script = [
+        *(Step("commit_budget", {"asset_id": asset, "amount": amount}, f"commit {amount:.0f} for {asset}")
+          for asset, amount in zip(assets, COMMITS)),
+        Step("create_work_order", {"asset_id": assets[0]}, f"work order for {assets[0]}", {"budget_id": 0}),
+        Step("commit_budget", {"asset_id": assets[1], "amount": OVER_LIMIT}, "over-limit attempt"),
+    ]
+    orch = orchestrator.Orchestrator(sid, db=d)
+    orch.start()
+    for step, r in orch.run(script):
+        _show(r, f"{step.tool} {step.args}")
         time.sleep(a.step)
-    if commits[0].allowed:
-        r = gate.guarded_call(sid, "agent:workorder", "create_work_order",
-                              {"asset_id": assets[0], "budget_id": commits[0].result["produced"]},
-                              f"work order for {assets[0]}", db=d)
-        _show(r, f"create_work_order {assets[0]}")
-        time.sleep(a.step)
-    r = gate.guarded_call(sid, "agent:programming", "commit_budget", {"asset_id": assets[1], "amount": OVER_LIMIT},
-                          "over-limit attempt", db=d)
-    _show(r, f"commit_budget {assets[1]} {OVER_LIMIT:.0f}")
 
     if a.auto_stop:
-        _set_status(d, sid, "abort_requested")
+        d.sessions.update_one({"_id": ObjectId(sid), "status": orchestrator.RUNNING}, {"$set": {
+            "status": orchestrator.ABORT_REQUESTED, "aborted_by": OWNER, "updated_at": datetime.now(UTC)}})
     print("waiting for Stop ...")
-    while d.sessions.find_one({"_id": ObjectId(sid)}, {"status": 1})["status"] != "abort_requested":
-        time.sleep(0.5)
-    _set_status(d, sid, "rolling_back")
-    out = revert.rollback_session(sid, db=d)
-    _set_status(d, sid, "rolled_back" if not out["failed"] else "failed")
-    print(f"rollback: {out}")
+    orch.watcher.join()
+    status = d.sessions.find_one({"_id": ObjectId(sid)}, {"status": 1})["status"]
+    print(f"session status: {status}")
     print(f"committed lines left: {d.budget_ledger.count_documents({'session_id': sid, 'status': 'committed'})}")
+    if status != orchestrator.ROLLED_BACK:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
