@@ -14,15 +14,15 @@ A public agency chooses which bridges to treat with a budget that never covers a
 - **Ledger** (`core/ledger.py`): per-session events with a SHA-256 hash chain; `verify` returns the first sequence number where the chain breaks. The chain detects edits and gaps; it does not prevent them.
 - **Revert** (`core/revert.py`): a saga stack of compensating actions. `rollback_session` undoes every live entry; `revert_dependants` undoes only the entries that depend on a rejected condition, newest first. Undo functions are idempotent.
 - **Domain systems** (`systems/`): simulated budget ledger, work orders, inspection requests and condition records. Tools: `commit_budget`, `create_work_order`, `request_inspection`, `propose_condition`, `approve_condition`, `reject_condition`. They are registered with the gate and write only through `guarded_call`.
-- **Data seed** (`setup_db.py`, `systems/assets.py`): validators, indexes, principals and policies for database `capital`; assets and approved condition records for 206 Highway 401 structures inside an approximate Toronto bounding box, from the Ontario bridge conditions file.
+- **Data seed** (`setup_db.py`, `systems/assets.py`): validators, indexes, principals and policies for database `capital`; assets and approved condition records for 198 Highway 401 bridges (culverts excluded) inside an approximate Toronto bounding box, from the Ontario bridge conditions file.
 - **Treatment selection** (`engine/plan.py`): a mixed-integer program (`scipy.optimize.milp`) that maximises total benefit within a budget envelope, at most one treatment per bridge, with optional fixed lines and excluded bridges. Each result carries an `inputs_hash`. The formulation is in [docs/formulas.md](docs/formulas.md).
-- **Control surface** (`web/server.py`, `web/index.html`): a FastAPI app with a Stop button, a list of pending condition records with approve and reject buttons, and a live event feed (server-sent events from a MongoDB change stream on `audit_events`). Every button calls an endpoint that calls `guarded_call` or sets the session status.
-- **Demo script** (`run_demo.py`): creates a session, commits budget for two bridges, creates a work order, attempts a commitment above the owner's spend limit (denied), waits for Stop, then rolls the session back.
-- **Orchestrator and stop watcher** (`core/orchestrator.py`): `Orchestrator.run` relays a script one step at a time. Each step is queued as a `tasks` document, claimed atomically and acted on through the gate. A step whose handoff source produced nothing is not queued; an allowed step with no result ends the session as `failed`. The watcher thread acts only on `abort_requested`: it waits for the tool call in flight, writes `abort_observed`, rolls the session back and ends it as `rolled_back` (or `failed`, if a compensation failed).
-- **Planner** (`systems/plans.py`, `engine/plan.py`): the `propose_plan` tool (actor `agent:planner`, undo `supersede_plan`) solves the session's plan over the region's approved conditions, with committed budget lines fixed, and stores it under `<session_id>:<seq>`. The `in_approved_plan` check (`core/gate.py`) allows a commitment only when the session's highest-`seq` non-superseded plan has a line with the same asset and cost. The seeded `commit_budget` policy does not list this check; a policy enforces it only when it adds the check, as `tests/systems/test_plans.py` does. Nothing in the orchestrator calls `plans.replan` yet.
+- **Control surface** (`web/server.py`, `web/index.html`): a FastAPI app with a Stop button, a list of pending condition records with approve and reject buttons, and a live event feed (server-sent events from a MongoDB change stream on `audit_events`). Every button calls an endpoint that calls `guarded_call` or sets the session status. The page also shows the session's active plan with its total against the envelope, commitments, work orders and inspection requests, read from `GET /sessions/{id}/state`. The feed replays the session's earlier events when it connects.
+- **Demo script** (`run_demo.py`): one session, 13 beats. Intake proposes a mock condition reading and the owner approves it; the planner solves the plan; programming commits a plan line and the work-order agent opens the order; an off-plan and an over-limit commitment are denied; a second mock reading arrives and agents act on it while it is pending; the engineer's approval is denied; the owner rejects the reading, so only its commitment and work order revert, an inspection request opens and the plan is re-solved without that bridge; Stop rolls back the rest. The script exits 1 when any beat differs.
+- **Orchestrator and stop watcher** (`core/orchestrator.py`): `Orchestrator.run` relays a script one step at a time. Each step is queued as a `tasks` document, claimed atomically and acted on through the gate. A step whose handoff source produced nothing is not queued; an allowed step with no result ends the session as `failed`. On `reverting` the watcher thread reverts the rejected condition's dependants and calls `plans.replan`. On `abort_requested` it waits for the tool call in flight, writes `abort_observed`, rolls the session back and ends it as `rolled_back` (or `failed`, if a compensation failed).
+- **Planner** (`systems/plans.py`, `engine/plan.py`): the `propose_plan` tool (actor `agent:planner`, undo `supersede_plan`) solves the session's plan over the region's bridges whose newest condition record is approved (a pending or rejected reading keeps a bridge out), with committed budget lines fixed, and stores it under `<session_id>:<seq>`. The `in_approved_plan` check (`core/gate.py`) allows a commitment only when the session's highest-`seq` non-superseded plan has a line with the same asset and cost. The seeded `commit_budget` policy lists this check.
 - **Actor picker** (`web/index.html`): a select with `user:owner_a` and `user:engineer_b`, preset from the `actor` query parameter. Approve and reject send the choice as `actor_id` and Stop sends it as `aborted_by`. The server checks the id format and passes `actor_id` to `guarded_call`, so the gate decides what the actor may do. An empty or unknown actor never approves.
 
-- **LLM mode** (`core/agents.py`): `choose()` gives an agent a goal and a list of options built in code. The model `gemini-3.5-flash-lite` (Gemini API `generateContent`, JSON output) returns an option number and a rationale. The tool and args always come from the code-built option. A missing key, a failed call or an invalid reply returns `options[default]`. On this branch only the tests call `choose()`; `run_demo.py` has no LLM flag and runs the scripted steps.
+- **LLM mode** (`core/agents.py`): `choose()` gives an agent a goal and a list of options built in code. The model `gemini-3.5-flash-lite` (Gemini API `generateContent`, JSON output) returns an option number and a rationale. The tool and args always come from the code-built option. A missing key, a failed call or an invalid reply returns `options[default]`. `run_demo.py --llm` uses it for the planner, the first commitment (a choice among three plan lines) and the work order; without the flag the scripted steps run, and that is the tested path.
 
 Design: [spec](docs/superpowers/specs/2026-11-13-audited-agent-design.md).
 
@@ -41,12 +41,14 @@ uv sync
 uv run python setup_db.py               # validators, indexes, principals, policies in database `capital`
 uv run python -m systems.assets         # seed assets and condition records (needs the data file below)
 uv run uvicorn web.server:app --port 8000
-uv run python run_demo.py --reset       # in another terminal; prints the page URL, then press Stop
+uv run python run_demo.py --reset       # in another terminal; prints the page URL; Approve, Reject and Stop come from the page
+uv run python run_demo.py --reset --auto         # no page: human actions go through the same server routes
+uv run python run_demo.py --reset --auto --llm   # agents pick from code-built options (needs LLM_API_KEY in .env)
 uv run pytest -q
 ```
 
 - `systems.assets` reads `bridge_condition_open_data_2020_en.csv` from `~/hackathon-data/ontario-bridge-conditions/`, or from the path in `ONTARIO_BRIDGES_PATH`. Download the file from the source under Data and attribution.
-- `run_demo.py` flags: `--reset` clears the run collections and re-runs `setup_db`; `--auto-stop` requests the stop without the page; `--wait SECONDS` (default 8) is the pause to open the page; `--step SECONDS` (default 1.5) is the pause between steps. It needs at least two assets in region `r1`.
+- `run_demo.py` flags: `--reset` clears the run collections and re-runs `setup_db`; `--auto` performs the approve, reject and stop actions without the page; `--llm` turns on LLM mode; `--wait SECONDS` (default 8) is the pause to open the page; `--step SECONDS` (default 1.5) is the pause between steps. It needs at least three assets in region `r1`. Run one demo at a time: `--reset` deletes every session in `capital`.
 - Tests that need Atlas skip when `MONGODB_URI` is unset. Each test uses its own `capital_test_<suffix>` database and drops it.
 
 ## Assumptions
@@ -59,12 +61,12 @@ Treatment gains and costs are assumptions, not sourced figures (`TREATMENTS` in 
 | `major_rehab` | 25 | 2000 |
 | `replacement` | 60 | 6000 |
 
-- The demo amounts in `run_demo.py` (envelope 120,000; commitments 40,000 and 35,000), the seeded spend limits and the region `r1` in `setup_db.py` are assumptions.
+- The demo amounts in `run_demo.py` (envelope 250,000,000; the off-plan and over-limit amounts), the seeded spend limits and the region `r1` in `setup_db.py` are assumptions.
 - The tool takes published condition ratings as given. It makes no safety or engineering judgment and is not engineering or cost data.
 - The solver picks treatments by arithmetic in code. The conditions file's per-year ratings are not loaded.
 - The people (`user:owner_a`, `user:engineer_b`) and the five agent identities in `contracts.py` are fictional.
 - Policies, spend limits and the budget envelope are demo rules, not a real authority matrix.
-- `run_demo.py` proposes no condition ratings. Any rating a demo script proposes is mock input and is labelled as such.
+- The two condition ratings `run_demo.py` proposes are mock input (newest published rating minus 5, dated 2026) and are labelled MOCK in the feed.
 - Plan output is illustrative. It is not an engineering, safety or funding recommendation.
 
 ## Data and attribution
