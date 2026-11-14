@@ -12,7 +12,7 @@ from pymongo.errors import PyMongoError
 
 import db as dbmod
 from contracts import ToolResult
-from core import ledger
+from core import ledger, revert
 
 
 class Registered(NamedTuple):
@@ -175,14 +175,26 @@ def guarded_call(session_id: str, actor_id: str, tool: str, args: dict, rational
         return ToolResult(allowed=False, reason=reason, result=None, seq=dec["seq"])
 
     reg = REGISTRY[tool]
+    # Idempotency key: tools store it under a unique index; undo finds the write by it, even for an armed entry.
+    key = f"{session_id}:{dec['seq']}"
+    targs = {**args, "idempotency_key": key}
+    if reg.undo_tool:
+        try:
+            revert.arm(d, session_id, dec["seq"], tool, reg.undo_tool, key, depends_on)
+        except Exception as e:
+            msg = f"saga: {_err(e)}"  # no armed entry, no execution
+            return ToolResult(allowed=True, reason=msg, result=None,
+                              seq=_record_after(d, session_id, {**base, "type": "failed", "reason": msg}))
     before = None
     try:
-        before = reg.snapshot(d, args)
-        result = reg.fn(d, args)
-    except Exception as e:
+        before = reg.snapshot(d, targs)
+        result = reg.fn(d, targs)
+    except Exception as e:  # the entry stays armed: outcome unknown, compensable
         msg = f"tool: {_err(e)}"
         return ToolResult(allowed=True, reason=msg, result=None,
                           seq=_record_after(d, session_id, {**base, "type": "failed", "reason": msg, "before": before}))
+    if reg.undo_tool:
+        revert.mark_done(d, session_id, dec["seq"], (result or {}).get("produced"))
     try:
         ev = ledger.append(session_id, {**base, "type": "executed", "before": before, "after": result}, db=d)
         return ToolResult(allowed=True, reason=None, result=result, seq=ev["seq"])
