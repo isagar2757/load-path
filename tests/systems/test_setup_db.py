@@ -35,6 +35,11 @@ def test_setup_db_runs_twice_without_error(test_db):
         assert test_db.principals.find_one({"_id": aid}) is not None
     assert test_db.policies.count_documents({"tool": "commit_budget", "status": "active"}) == 1
     assert test_db.policies.count_documents({"tool": "create_work_order", "status": "active"}) == 1
+    active = {p["tool"]: p for p in test_db.policies.find({"status": "active"})}
+    for tool, checks in [("approve_condition", ["role", "jurisdiction"]),
+                         ("reject_condition", ["role", "jurisdiction", "has_reason"])]:
+        assert active[tool]["roles"] == ["owner"]
+        assert [ch["name"] for ch in active[tool]["checks"]] == checks
 
 
 @needs_atlas

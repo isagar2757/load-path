@@ -107,12 +107,19 @@ def _check_has_commitment(ctx: dict, params: dict) -> None:
         raise Deny(f"has_commitment: no committed budget line for asset {aid} in this session")
 
 
+def _check_has_reason(ctx: dict, params: dict) -> None:
+    r = ctx["args"].get("reason")
+    if not isinstance(r, str) or not r.strip():
+        raise Deny("has_reason: args.reason must be a non-empty string")
+
+
 CHECKS: dict[str, Callable[[dict, dict], None]] = {
     "role": _check_role,
     "spend_limit": _check_spend_limit,
     "envelope": _check_envelope,
     "jurisdiction": _check_jurisdiction,
     "has_commitment": _check_has_commitment,
+    "has_reason": _check_has_reason,
 }
 
 
