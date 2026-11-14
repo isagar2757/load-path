@@ -26,7 +26,7 @@ A public agency chooses which bridges to treat with a budget that never covers a
 - **Agents** (`core/agents/`): one module per agent (`intake.py`, `planner.py`, `programming.py`, `workorder.py`), each with its id, model, system prompt, goal and an `options()` function that reads the database and returns the allowed steps, best first. Intake offers a MOCK reading per bridge in scope (scripted, no model). The planner offers `propose_plan` only when there is no active plan or an approval is newer than it. Programming offers the uncommitted plan lines in scope, ranked by benefit per dollar, then by benefit. The work-order agent offers committed lines with no work order, oldest first.
 - **LLM mode and guardrails** (`core/agents/__init__.py`, `core/agents/llm.py`): `choose()` returns option 0 in scripted mode. With `--llm`, the planner, programming and work-order agents ask `gemini-3.5-flash-lite` (Gemini API `generateContent`, JSON output, one system prompt per agent) for an option number and a rationale; the tool and args always come from the code-built option. The options go to the model as a JSON block. A reply is used only if it is a JSON object with an integer index in range and a non-empty rationale (control characters stripped, 300 characters kept). A missing key, a 10-second timeout, a failed call, a per-run cap (30 calls, 30,000 tokens) or an invalid reply returns option 0 and is counted by cause. `run_demo.py` prints offered, picked and model-or-fallback per step, and calls, tokens and fallbacks per agent. Scripted mode is the default and the tested path.
 
-Design: [spec](docs/superpowers/specs/2026-11-13-audited-agent-design.md) · [demo script](docs/demo-script.md).
+Design: [spec](docs/superpowers/specs/2026-11-13-audited-agent-design.md) · [how it works](docs/architecture.md) · [demo script](docs/demo-script.md).
 
 ## Run steps
 
@@ -50,7 +50,7 @@ uv run pytest -q
 ```
 
 - `systems.assets` reads `bridge_condition_open_data_2020_en.csv` from `~/hackathon-data/ontario-bridge-conditions/`, or from the path in `ONTARIO_BRIDGES_PATH`. Download the file from the source under Data and attribution.
-- `run_demo.py` flags: `--reset` clears the run collections and re-runs `setup_db`; `--auto` performs the approve, reject and stop actions without the page; `--llm` turns on LLM mode; `--wait SECONDS` (default 8) is the pause to open the page; `--step SECONDS` (default 1.5) is the pause between steps. It needs at least three assets in region `r1`. `--reset` deletes every session in the database it runs on: set `CAPITAL_DB=capital_<name>` in `.env` to use your own database, then run `setup_db.py` and `systems.assets` for it. Stop at any point ends the run with a rollback.
+- `run_demo.py` flags: `--reset` clears the run collections and re-runs `setup_db`; `--pause` waits for Enter before each agent section (live demo); `--auto` performs the approve, reject and stop actions without the page; `--llm` turns on LLM mode; `--wait SECONDS` (default 8) is the pause to open the page; `--step SECONDS` (default 1.5) is the pause between steps. It needs at least three assets in region `r1`. `--reset` deletes every session in the database it runs on: set `CAPITAL_DB=capital_<name>` in `.env` to use your own database, then run `setup_db.py` and `systems.assets` for it. Stop at any point ends the run with a rollback.
 - Tests that need Atlas skip when `MONGODB_URI` is unset. Each test uses its own `capital_test_<suffix>` database and drops it.
 
 ## Assumptions

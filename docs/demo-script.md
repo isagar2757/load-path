@@ -1,7 +1,7 @@
 # Demo script
 
 Narration, a 3-minute live demo and a one-minute video. Every on-screen value is from
-`uv run python run_demo.py --reset --auto --llm --wait 0 --step 0` on `main` at 6b564e0 (2026-11-14).
+`uv run python run_demo.py --reset --auto --llm --wait 0 --step 0` on 2026-11-14.
 Timings are targets, not rehearsed.
 
 ## 1. Scenario and problem
@@ -54,21 +54,28 @@ Every action, by an agent or a person, takes one route: gate, ledger and, if nee
 
 ## 4. Live demo (3 minutes)
 
-Before speaking: page server running, `run_demo.py --reset --llm` started, page open from the printed URL as
-`user:owner_a`.
+Before speaking: page server running, `run_demo.py --reset --llm --pause` started, page open from the printed
+URL as `user:owner_a`. With `--pause` the script waits for Enter in the terminal before each agent section, so
+the speaker sets the pace. Clicks happen on the page; Enter happens in the terminal.
+
+Scripted mode (no `--llm`) runs the same beats with code-written rationales and no model call. Use it if the
+network or the model is slow.
 
 | Time | Do | On screen | Say |
 |---|---|---|---|
-| 0:00 | Nothing | Page, empty feed | "An agency has 198 bridges and a budget that covers some of them. Agents now do the planning and the spending. Three questions follow: why this bridge, who said yes, and what was undone when a fact was wrong." |
+| 0:00 | Nothing, then Enter | Page, empty feed | "An agency has 198 bridges and a budget that covers some of them. Agents now do the planning and the spending. Three questions follow: why this bridge, who said yes, and what was undone when a fact was wrong." |
 | 0:20 | Approve the pending reading | Intake proposes a reading for 22X-0161/B1, labelled MOCK. After Approve: plan with 190 lines, 249,979,760 of a 250,000,000 envelope | "A new reading arrives. Nothing is planned on it until the owner approves. Then the planner solves the program in code: 190 treatments inside the envelope." |
-| 0:45 | Point at the feed | `agent:programming offered 3, picked 0, by model`; commit 2,179,210 for 22X-0161/B3; work order opens | "Programming had three plan lines to choose from. They tie on benefit per dollar, so it took the larger benefit and wrote why. The model picks from a list. It cannot invent a bridge or an amount." |
-| 1:10 | Point at the two DENY rows | DENY `in_approved_plan` for 12,345; DENY `spend_limit` for 100,050,000 against a 100,000,000 limit | "Two probes. An amount that is not in the plan: denied. An amount above the owner's limit: denied. The gate decides, not the agent." |
-| 1:30 | Switch actor to `user:engineer_b`, Approve | Second MOCK reading for 22X-0161/B2 pending; budget 1,844,400 and a work order already rest on it; DENY `role` | "A second reading arrives and agents act on it while it is still pending. The engineer tries to approve it. Wrong role: denied." |
+| 0:45 | Point at the feed (runs by itself after Approve) | `agent:programming offered 3, picked 0, by model`; commit 2,179,210 for 22X-0161/B3; work order opens | "Programming had three plan lines to choose from. They tie on benefit per dollar, so it took the larger benefit and wrote why. The model picks from a list. It cannot invent a bridge or an amount." |
+| 1:10 | Enter, then point at the two DENY rows | DENY `in_approved_plan` for 12,345; DENY `spend_limit` for 100,050,000 against a 100,000,000 limit | "Two probes. An amount that is not in the plan: denied. An amount above the owner's limit: denied. The gate decides, not the agent." |
+| 1:30 | Enter; wait for the work-order row; switch actor to `user:engineer_b`, Approve | Second MOCK reading for 22X-0161/B2 pending; budget 1,844,400 and a work order already rest on it; DENY `role` | "A second reading arrives and agents act on it while it is still pending. The engineer tries to approve it. Wrong role: denied." |
 | 1:55 | Switch to `user:owner_a`, type a reason, Reject | B2 budget released, B2 work order cancelled, B3 still committed, inspection request opened, plan re-solved without B2 | "The owner rejects the reading. Only what depended on it is undone: that bridge's budget and work order. The other bridge is untouched. An inspection is requested and the plan is re-solved without it." |
 | 2:30 | Stop | Status `rolled_back`, committed lines 0 | "The owner can stop the whole session. Everything still live is rolled back, and every step of that is in the ledger." |
 | 2:45 | Nothing | Feed | "Why this bridge: the rationale. Who said yes: the gate decision. What was undone: the revert. One path for every action." |
 
 Speaker rules: say "mock reading" when it appears; costs are assumptions; no statement about bridge safety.
+
+If Reject is clicked before the script asks for it, the run still ends cleanly: the script prints that beats 11
+and 12 were skipped, checks the revert, and waits for Stop. Stop at any point rolls back and prints `demo ok`.
 
 ## 5. One-minute video
 
@@ -86,7 +93,7 @@ Five shots, one point each.
 
 ```
 uv run uvicorn web.server:app --port 8000                          # terminal 1
-uv run python run_demo.py --reset --llm                            # terminal 2, prints the page URL
+uv run python run_demo.py --reset --llm --pause                    # terminal 2, prints the page URL; Enter per section
 uv run python run_demo.py --reset --auto --llm --wait 0 --step 0   # pre-flight, ends with: demo ok
 ```
 
@@ -95,6 +102,7 @@ Set `CAPITAL_DB` in `.env` to your own database first. For recording, add `prese
 ## 7. UNVERIFIED
 
 - Timings. Verify: run section 4 three times from `--reset`.
-- The interactive run with the page after the turn-loop change (only `--auto` was run). Verify: the first two
-  commands in section 6, then the clicks in section 4.
-- Ledger tamper check: not in this script; not re-run after the changes. Verify: `uv run pytest -q tests/core/test_ledger.py`.
+- A run with a person clicking in a browser. `--auto`, `--pause` with piped Enters, and a driver calling the
+  page's server routes were run; the page itself was not. Verify: the first two commands in section 6, then the
+  clicks in section 4.
+- Ledger tamper check: not in this script. Covered by `tests/core/test_ledger.py`.
