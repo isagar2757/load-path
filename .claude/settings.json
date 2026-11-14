@@ -3,7 +3,7 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "uv run --quiet scripts/adlc_log.py tail -n 10 2>/dev/null || true" }
+          { "type": "command", "command": "uv run --quiet scripts/adlc_log.py inbox -n 5 2>/dev/null; uv run --quiet scripts/adlc_log.py tail -n 10 2>/dev/null || true" }
         ]
       }
     ]

@@ -1,8 +1,9 @@
 ---
-description: Shared ADLC log and workflow rules
+description: Shared ADLC log, relay loop and workflow rules
 alwaysApply: true
 ---
-Follow AGENTS.md. At the start of a task, run `uv run scripts/adlc_log.py tail -n 10` and read it.
-Log events with `ADLC_TOOL=cursor uv run scripts/adlc_log.py add --item <ID> --phase <P> --event <E> --summary "<one line>"`
-for task_start, task_done (with --evidence), decision, blocker, handoff. Commits are logged by the post-commit hook.
-Never write secrets. Edit only files in your lane.
+Follow AGENTS.md and the relay loop in docs/adlc/shared-log.md. You work for Arad; your lane is in AGENTS.md (lanes and ownership).
+At the start of every task run `uv run scripts/adlc_log.py inbox` and `uv run scripts/adlc_log.py tail -n 10`, and act on anything addressed to arad first.
+Log with `ADLC_TOOL=cursor uv run scripts/adlc_log.py add --item <ID> --phase <P> --event <E> --summary "<one line>" [--to sagar] [--evidence "<command output line>"]`:
+task_start, test_run (with evidence), task_done (with evidence), handoff --to sagar when a PR is ready, review --to sagar after reviewing his PR, question/blocker --to sagar.
+Branch `feat/<id>-<slug>` (e.g. feat/a0-setup-db). Tests first. Never edit a file outside your lane; never change contracts.py without a logged decision. Never write secrets. No guessing: verify or write UNVERIFIED.
