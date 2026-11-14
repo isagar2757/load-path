@@ -209,37 +209,32 @@ def _seed_principals(database) -> None:
         database.principals.replace_one({"_id": doc["_id"]}, doc, upsert=True)
 
 
-def _seed_stage2_policies(database) -> None:
-    now = datetime.now(timezone.utc)
-    policies = [
-        {
-            "tool": "commit_budget",
-            "version": 1,
-            "status": "active",
-            "roles": ["programming"],
-            "checks": [
-                {"name": "role", "params": {}},
-                {"name": "spend_limit", "params": {}},
-                {"name": "envelope", "params": {}},
-                {"name": "jurisdiction", "params": {}},
-            ],
-            "author": POLICY_AUTHOR,
-            "created_at": now,
-        },
-        {
-            "tool": "create_work_order",
-            "version": 1,
-            "status": "active",
-            "roles": ["workorder"],
-            "checks": [
-                {"name": "role", "params": {}},
-                {"name": "has_commitment", "params": {}},
-            ],
-            "author": POLICY_AUTHOR,
-            "created_at": now,
-        },
+def _policies(now: datetime) -> list[dict]:
+    """Active version-1 policies: (tool, roles, checks)."""
+    specs = [
+        ("commit_budget", ["programming"], ["role", "spend_limit", "envelope", "jurisdiction"]),
+        ("create_work_order", ["workorder"], ["role", "has_commitment"]),
+        ("approve_condition", ["owner"], ["role", "jurisdiction"]),
+        ("reject_condition", ["owner"], ["role", "jurisdiction", "has_reason"]),
+        ("request_inspection", ["orchestrator"], ["role"]),
     ]
-    for doc in policies:
+    return [
+        {
+            "tool": tool,
+            "version": 1,
+            "status": "active",
+            "roles": roles,
+            "checks": [{"name": n, "params": {}} for n in checks],
+            "author": POLICY_AUTHOR,
+            "created_at": now,
+        }
+        for tool, roles, checks in specs
+    ]
+
+
+def _seed_policies(database) -> None:
+    now = datetime.now(timezone.utc)
+    for doc in _policies(now):
         c.Policy.model_validate(doc)
         existing = database.policies.find_one({"tool": doc["tool"], "status": "active"})
         if existing:
@@ -257,7 +252,7 @@ def setup(db_name: str = c.DB_NAME) -> None:
         _ensure_validated(database, name, schema)
     _ensure_indexes(database)
     _seed_principals(database)
-    _seed_stage2_policies(database)
+    _seed_policies(database)
 
 
 if __name__ == "__main__":

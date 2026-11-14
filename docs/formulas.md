@@ -18,6 +18,7 @@ No active policy, inactive actor, session not `running`, or any exception ⇒ `d
 | `jurisdiction` | `asset.region = session.region`; for a human approval also `asset.region = actor.region` |
 | `has_commitment` | a `committed` budget line exists for `(session, asset)` |
 | `in_approved_plan` | the session's approved plan has a line with the same asset and amount |
+| `has_reason` | `args.reason` is a string with at least one non-space character (`reject_condition`) |
 
 ## 2. Ledger hash chain (task S1)
 `h₀_prev = "0" × 64`

@@ -1,4 +1,6 @@
 """A0: setup_db validators, indexes, seed. Plan Stage 0 check."""
+import uuid
+
 import pytest
 from pymongo.errors import WriteError
 
@@ -8,8 +10,8 @@ import setup_db
 
 needs_atlas = pytest.mark.skipif(not db.mongo_uri(required=False), reason="MONGODB_URI not set")
 
-# Own DB name so Sagar's capital_test runs cannot race Atlas drop/create.
-A0_TEST_DB = "capital_test_a0"
+# Unique per run: a fixed name raced between machines (one run's validator replaced the other's mid-test).
+A0_TEST_DB = f"{c.TEST_DB_NAME}_a0_{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture
@@ -35,6 +37,12 @@ def test_setup_db_runs_twice_without_error(test_db):
         assert test_db.principals.find_one({"_id": aid}) is not None
     assert test_db.policies.count_documents({"tool": "commit_budget", "status": "active"}) == 1
     assert test_db.policies.count_documents({"tool": "create_work_order", "status": "active"}) == 1
+    active = {p["tool"]: p for p in test_db.policies.find({"status": "active"})}
+    for tool, checks in [("approve_condition", ["role", "jurisdiction"]),
+                         ("reject_condition", ["role", "jurisdiction", "has_reason"])]:
+        assert active[tool]["roles"] == ["owner"]
+        assert [ch["name"] for ch in active[tool]["checks"]] == checks
+    assert active["request_inspection"]["roles"] == ["orchestrator"]
 
 
 @needs_atlas
