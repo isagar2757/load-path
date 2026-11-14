@@ -17,6 +17,9 @@ This file keeps only what does not change per task: ground truth and decisions.
 - 2026-11-14 — Shared log exists on the Atlas Sandbox: db `adlc`, collection `log`, indexes `item_ts`, `author_ts` (verified by insert and `find`).
 - 2026-11-14 — `main` protected: PR required, checks `checks` and `tests` must pass, 0 approvals, no force push; secret scanning and push protection enabled (read back via API). CI negative case (a bad PR failing) not yet exercised: UNVERIFIED.
 - 2026-11-14 — Status moved to `adlc.items` (seeded from this file's tables; S0, RELAY, S1 done; A0 active/Verify from Arad's log events).
+- 2026-11-14 — Data: `capital.assets` = 206 Highway 401 structures inside a Toronto lat/long box from Ontario bridge conditions 2020 (OGL-Ontario); BCI 0–100. Gardiner is city-owned, not in the file.
+- 2026-11-14 — Speed mode until the demo (decision on A4): one machine, CI workflows disabled, `push --no-verify`, admin merge; full suite and cleanup after features land.
+- 2026-11-14 — Stage 2 beat (`run_demo.py --reset --auto-stop`) green twice on main e6d363b: 3 allow, over-limit deny, rollback 3, 0 committed left. Page run by hand: UNVERIFIED.
 - 2026-11-14 — This repo is public. Keep personal notes, IPs and credentials out of it.
 
 ## Open decisions
