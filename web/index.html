@@ -167,6 +167,7 @@
       feed.replaceChildren();
       statusEl.textContent = "listening…";
       source = new EventSource("/events?session_id=" + encodeURIComponent(sid()));
+      source.onopen = () => { feed.replaceChildren(); };  // the server replays the session on each connect
       source.onmessage = (ev) => {
         const doc = JSON.parse(ev.data);
         feed.prepend(feedRow(doc, true));

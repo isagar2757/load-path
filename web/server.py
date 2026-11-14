@@ -145,11 +145,19 @@ def create_app(database=None) -> FastAPI:
                     "fullDocument.session_id": session_id,
                 },
             }]
+            def frame(doc: dict) -> str:
+                return f"data: {json.dumps(_jsonable(doc), separators=(',', ':'))}\n\n"
+
+            # The stream opens before the replay, so no event falls between them; `sent` drops the overlap.
             with database.audit_events.watch(pipeline, full_document="updateLookup") as stream:
+                sent = 0
+                for doc in database.audit_events.find({"session_id": session_id}).sort("seq", 1):
+                    sent = doc["seq"]
+                    yield frame(doc)
                 for change in stream:
                     doc = change.get("fullDocument") or {}
-                    payload = _jsonable(doc)
-                    yield f"data: {json.dumps(payload, separators=(',', ':'))}\n\n"
+                    if doc.get("seq", sent + 1) > sent:
+                        yield frame(doc)
 
         return StreamingResponse(
             gen(),
