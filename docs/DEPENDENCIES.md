@@ -21,4 +21,14 @@ Verified once on Sagar's Mac, 2026-11-13, in a throwaway uv env: Python 3.13.3, 
 | Tool | Version | Purpose |
 |---|---|---|
 | uv | 0.13.8 | Python and env management |
-| git hooks (`.githooks/`) | n/a | Guards; no external dependency |
+| git hooks (`.githooks/`, `scripts/check.sh`) | n/a | pre-commit, commit-msg, post-commit (Mongo log), pre-push; no external dependency |
+| `scripts/adlc_log.py` | n/a | Shared log client; uv inline deps: pymongo>=4.7, certifi |
+| GitHub Actions `ci.yml` | actions/checkout@v4, astral-sh/setup-uv@v5 | Same checks as the hooks on every PR; pytest when `tests/` exists |
+| Branch protection on `main` | n/a | PR required, `checks` and `tests` must pass |
+
+## Project skills and rules
+| Name | Where | Purpose |
+|---|---|---|
+| adlc-log | `.claude/skills/adlc-log/` | Teaches Claude Code when and how to log |
+| adlc rule | `.cursor/rules/adlc.mdc` | Same for Cursor (always applied) |
+| SessionStart hook | `.claude/settings.json` | Prints latest 10 log events at session start |

@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "uv run --quiet scripts/adlc_log.py tail -n 10 2>/dev/null || true" }
+        ]
+      }
+    ]
+  }
+}
