@@ -30,7 +30,8 @@ OFF_PLAN = 12_345.0       # assumption: an amount no plan line has
 MOCK_YEAR = 2026          # mock: the proposed readings are not in the source file
 MOCK_DROP = 5.0           # mock: proposed rating = newest published rating minus this
 SEED_KEY = r"^[^:]+:\d{4}$"  # condition ids the asset loader writes; anything else is from an earlier run
-TIMEOUT = 60.0
+TIMEOUT = 60.0         # seconds for the watcher to finish a revert and re-plan
+HUMAN_TIMEOUT = 1800.0  # seconds to wait for a click on the page
 
 
 class Beat:
@@ -59,8 +60,8 @@ def reset(d) -> None:
     setup_db.setup(d.name)
 
 
-def wait_for(what: str, done) -> None:
-    end = time.monotonic() + TIMEOUT
+def wait_for(what: str, done, timeout: float = TIMEOUT) -> None:
+    end = time.monotonic() + timeout
     while not done():
         if time.monotonic() > end:
             raise SystemExit(f"timed out waiting for {what}")
@@ -128,7 +129,8 @@ def main() -> None:
             print(f"    on the page, as {actor}: {action} {condition_id}", flush=True)
             if expect:
                 wait_for(f"{action} from the page",
-                         lambda: d.condition_records.find_one({"_id": condition_id})["status"] != "pending")
+                         lambda: d.condition_records.find_one({"_id": condition_id})["status"] != "pending",
+                         HUMAN_TIMEOUT)
             return
         body = {"actor_id": actor, "condition_id": condition_id, **({"reason": reason} if reason else {})}
         resp = client.post(f"/sessions/{sid}/conditions/{action}", json=body)
