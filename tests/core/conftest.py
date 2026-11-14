@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 
 import pytest
@@ -9,10 +10,14 @@ import db
 
 @pytest.fixture
 def tdb():
-    """Fresh `capital_test` with the contract indexes; dropped afterwards. Skips without Atlas."""
+    """Fresh `capital_test_<random>` with the contract indexes; dropped afterwards. Skips without Atlas.
+
+    A unique name per test: both people run suites against the same cluster, and a shared `capital_test`
+    was dropped and reseeded under a running suite (BulkWriteError, missing policies).
+    """
     if not db.mongo_uri(required=False):
         pytest.skip("MONGODB_URI not set")
-    d = db.get_db(contracts.TEST_DB_NAME)
+    d = db.get_db(f"{contracts.TEST_DB_NAME}_{uuid.uuid4().hex[:8]}")
     d.client.drop_database(d.name)
     for coll, keys, opts in contracts.INDEXES:
         d[coll].create_index(keys, **opts)
