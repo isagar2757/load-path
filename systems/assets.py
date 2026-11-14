@@ -68,4 +68,4 @@ def load(db, path: str = ONTARIO_PATH) -> int:
 
 
 if __name__ == "__main__":
-    print(load(dbmod.get_db(contracts.DB_NAME)))
+    print(load(dbmod.get_db()))

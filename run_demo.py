@@ -101,6 +101,28 @@ def main() -> None:
         from web.server import create_app
         client = TestClient(create_app(d))
 
+    def stopped() -> bool:
+        session = d.sessions.find_one({"_id": oid}, {"status": 1})
+        return session is None or session["status"] not in (orchestrator.RUNNING, orchestrator.REVERTING)
+
+    def finish(early: bool = False) -> None:
+        """Wait for the watcher's rollback, check the end state and exit."""
+        if early:
+            print("    Stop pressed before the script finished: rolling back what was done", flush=True)
+        orch.watcher.join()
+        session = d.sessions.find_one({"_id": oid}, {"status": 1})
+        if session is None:
+            raise SystemExit("FAILED: the session was deleted (another run with --reset?)")
+        left = d.budget_ledger.count_documents({"session_id": sid, "status": "committed"})
+        beat.check(f"session status {session['status']}", session["status"] == orchestrator.ROLLED_BACK)
+        beat.check(f"committed lines left: {left}", left == 0)
+        if a.llm:
+            print(f"LLM calls: {agents.USAGE['calls']}, tokens: {agents.USAGE['tokens']}", flush=True)
+        if beat.bad:
+            raise SystemExit("FAILED: " + "; ".join(beat.bad))
+        print("demo ok" + (" (stopped early)" if early else ""), flush=True)
+        raise SystemExit(0)
+
     def pick(tool: str, goal: str, options: list[Step]) -> Step:
         return agents.choose(c.TOOLS[tool].actor, goal, options) if a.llm else options[0]
 
@@ -112,8 +134,7 @@ def main() -> None:
             out.append(r)
             time.sleep(a.step)
         if len(out) != len(expect):
-            raise SystemExit(f"relay stopped after {len(out)} of {len(expect)} steps: session is not running "
-                             "(another run with --reset deletes it)")
+            finish(early=True)
         return out
 
     def mock_condition(asset: str) -> Step:
@@ -128,9 +149,13 @@ def main() -> None:
         if client is None:
             print(f"    on the page, as {actor}: {action} {condition_id}", flush=True)
             if expect:
-                wait_for(f"{action} from the page",
-                         lambda: d.condition_records.find_one({"_id": condition_id})["status"] != "pending",
-                         HUMAN_TIMEOUT)
+                wait_for(f"{action} or Stop from the page", lambda: stopped() or (d.condition_records.find_one(
+                    {"_id": condition_id}) or {}).get("status") != "pending", HUMAN_TIMEOUT)
+                if stopped():
+                    finish(early=True)
+                got = d.condition_records.find_one({"_id": condition_id})["status"]
+                beat.show(actor, tool, got == f"{action[:-1] if action.endswith('e') else action}ed", None, True,
+                          f"{condition_id} -> {got}")
             return
         body = {"actor_id": actor, "condition_id": condition_id, **({"reason": reason} if reason else {})}
         resp = client.post(f"/sessions/{sid}/conditions/{action}", json=body)
@@ -184,8 +209,11 @@ def main() -> None:
 
     # 4. the owner rejects it: only its dependants revert, an inspection is requested, the plan is re-solved.
     human(OWNER, "reject", cond2, True, "reading disputed, re-inspect")
-    wait_for("revert and re-plan", lambda: d.plans.count_documents({"session_id": sid}) >= 2
-             and d.sessions.find_one({"_id": oid})["status"] == orchestrator.RUNNING)
+    wait_for("revert and re-plan", lambda: stopped() or (
+        d.plans.count_documents({"session_id": sid}) >= 2
+        and d.sessions.find_one({"_id": oid})["status"] == orchestrator.RUNNING))
+    if stopped():
+        finish(early=True)
     replanned = active_plan()
     beat.check(f"reverted: budget for {b_id} released", status_of("budget_ledger", budget_b) == "released")
     beat.check(f"reverted: work order for {b_id} cancelled", status_of("work_orders", order_b) == "cancelled")
@@ -201,16 +229,7 @@ def main() -> None:
     else:
         resp = client.post(f"/sessions/{sid}/stop", json={"aborted_by": OWNER})
         beat.show(OWNER, "stop", resp.status_code == 200, None, True)
-    orch.watcher.join()
-    status = d.sessions.find_one({"_id": oid}, {"status": 1})["status"]
-    left = d.budget_ledger.count_documents({"session_id": sid, "status": "committed"})
-    beat.check(f"session status {status}", status == orchestrator.ROLLED_BACK)
-    beat.check(f"committed lines left: {left}", left == 0)
-    if a.llm:
-        print(f"LLM calls: {agents.USAGE['calls']}, tokens: {agents.USAGE['tokens']}", flush=True)
-    if beat.bad:
-        raise SystemExit("FAILED: " + "; ".join(beat.bad))
-    print("demo ok", flush=True)
+    finish()
 
 
 if __name__ == "__main__":

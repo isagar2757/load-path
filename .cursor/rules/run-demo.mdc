@@ -1,0 +1,6 @@
+---
+description: How to run, test and record the load-path demo and page
+alwaysApply: false
+---
+When asked to run, start, test or record the app, the page or the demo script, follow `.claude/skills/run-demo/SKILL.md`.
+Set `CAPITAL_DB=capital_arad` in `.env` before any `run_demo.py --reset`: the reset deletes every session in the database it runs on.
