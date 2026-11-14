@@ -1,6 +1,7 @@
 """Task relay and stop watcher. Relay: docs/formulas.md section 6; session statuses: plan, section Contracts.
 
-One worker queues a script step as a `tasks` document, claims it and lets the step's agent act through the gate.
+A turn loop asks each agent for its next step, queues it as a `tasks` document, claims it and lets the agent act
+through the gate.
 A watcher thread polls the session; on `abort_requested` it waits for the tool call in flight, then rolls back.
 On `reverting` it reverts the rejected condition's dependants and re-plans, then keeps watching; a failed undo
 ends the session `failed` (a person decides).
@@ -82,31 +83,47 @@ class Orchestrator:
             out = revert.rollback_session(self.sid, db=self.d)
             self._end(ROLLING_BACK, FAILED if out["failed"] else ROLLED_BACK, out)
 
-    def run(self, script: list[agents.Step]) -> Iterator[tuple[agents.Step, contracts.ToolResult]]:
-        """Relay the script one task at a time, yielding each step with its gate result.
+    def submit(self, step: agents.Step, meta: dict | None = None) -> contracts.ToolResult | None:
+        """Queue the step as a task, claim it, let its agent act through the gate and record the result.
 
-        A step whose handoff source produced nothing is not queued. The relay ends when the session is no
-        longer `running`, and fails the session when a tool errors after an allow (no automatic retry of a write).
+        `meta` (how the step was chosen) is stored in the task input. None when the session is not `running`.
+        A tool error after an allow fails the session (no automatic retry of a write).
         """
-        outputs: list[dict | None] = []
-        for step in script:
-            handed = {arg: (outputs[i] or {}).get("produced") for arg, i in step.handoff.items()}
-            if None in handed.values():
-                outputs.append(None)
-                continue
-            with self._lock:
-                if self._status() != RUNNING:
+        with self._lock:
+            if self._status() != RUNNING:
+                return None
+            self.d.tasks.insert_one(contracts.Task(
+                session_id=self.sid, type=step.tool, agent_id=contracts.TOOLS[step.tool].actor, status=QUEUED,
+                input={"args": step.args, "rationale": step.rationale, "depends_on": list(step.depends_on),
+                       **(meta or {})},
+                created_at=datetime.now(UTC)).model_dump())
+            task = claim(self.d, self.sid)
+            r = agents.act(self.d, task)
+            self.d.tasks.update_one({"_id": task["_id"]}, {"$set": {
+                "status": TASK_FAILED if r.result is None else DONE, "output": r.result}})
+            if r.allowed and r.result is None:
+                self._end(RUNNING, FAILED, {"reason": r.reason})
+        return r
+
+    def run_agents(self, agent_modules: list, scope: list[str], use_llm: bool,
+                   max_rounds: int) -> Iterator[tuple[agents.Step, dict, contracts.ToolResult]]:
+        """Turn loop: each round asks each agent in order for one step and submits it, yielding (step, meta, result).
+
+        Ends when a round passes with no agent offering a step, the session is not `running`, a step is denied
+        or fails (a person decides), or `max_rounds` is reached.
+        """
+        for _ in range(max_rounds):
+            idle = True
+            for agent in agent_modules:
+                step, meta = agents.choose(agent, self.d, self.sid, scope, use_llm)
+                if step is None:
+                    continue
+                r = self.submit(step, meta)
+                if r is None:
                     return
-                self.d.tasks.insert_one(contracts.Task(
-                    session_id=self.sid, type=step.tool, agent_id=contracts.TOOLS[step.tool].actor, status=QUEUED,
-                    input={"args": {**step.args, **handed}, "rationale": step.rationale,
-                           "depends_on": [*step.depends_on, *handed.values()]},
-                    created_at=datetime.now(UTC)).model_dump())
-                task = claim(self.d, self.sid)
-                r = agents.act(self.d, task)
-                self.d.tasks.update_one({"_id": task["_id"]}, {"$set": {
-                    "status": TASK_FAILED if r.result is None else DONE, "output": r.result}})
-                if r.allowed and r.result is None:
-                    self._end(RUNNING, FAILED, {"reason": r.reason})
-            outputs.append(r.result)
-            yield step, r
+                idle = False
+                yield step, meta, r
+                if r.result is None:
+                    return
+            if idle:
+                return

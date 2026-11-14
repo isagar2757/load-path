@@ -1,4 +1,4 @@
-"""S4: task claim, scripted agents and the stop watcher (docs/formulas.md section 6)."""
+"""S4/X2: task claim, the agent turn loop and the stop watcher (docs/formulas.md section 6)."""
 import threading
 import time
 from datetime import UTC, datetime
@@ -10,7 +10,7 @@ import contracts
 import setup_db
 import systems
 from core import gate, ledger, orchestrator
-from core.agents import Step
+from core.agents import Step, intake, planner, programming, workorder
 from systems import budget
 
 
@@ -35,10 +35,9 @@ def stage2(world):
 
 SCRIPT = [
     Step("commit_budget", {"asset_id": "b1", "amount": 30.0}, "commit b1"),
-    Step("commit_budget", {"asset_id": "b2", "amount": 40.0}, "commit b2"),
-    Step("create_work_order", {"asset_id": "b1"}, "work order b1", handoff={"budget_id": 0}),
-    Step("commit_budget", {"asset_id": "b2", "amount": 10.0}, "never runs"),
+    Step("commit_budget", {"asset_id": "b2", "amount": 40.0}, "never runs"),
 ]
+LOOP = [planner, intake, programming, workorder]
 
 
 def _request_stop(tdb, sid):
@@ -50,6 +49,25 @@ def _status(tdb, sid):
     return tdb.sessions.find_one({"_id": ObjectId(sid)})["status"]
 
 
+@pytest.fixture
+def program(world):
+    """Every agent and demo policy, two bridges with an approved reading each, an envelope that fits both."""
+    tdb, sid = world
+    systems.register()
+    tdb.principals.insert_many([
+        contracts.Principal(id=aid, kind="agent", roles=[aid.split(":")[1]], region="r1", spend_limit=0,
+                            active=True).model_dump(by_alias=True)
+        for aid in ("agent:workorder", "agent:orchestrator", "agent:planner")])
+    tdb.policies.insert_many(setup_db._policies(datetime.now(UTC)))
+    tdb.sessions.update_one({"_id": ObjectId(sid)}, {"$set": {"budget_envelope": 1_000_000.0}})
+    tdb.assets.insert_many([{"_id": "b1", "region": "r1", "deck_area": 10.0},
+                            {"_id": "b2", "region": "r1", "deck_area": 20.0}])
+    tdb.condition_records.insert_many([
+        {"_id": "b1:2020", "asset_id": "b1", "rating": 70.0, "year": 2020, "status": "approved"},
+        {"_id": "b2:2020", "asset_id": "b2", "rating": 60.0, "year": 2020, "status": "approved"}])
+    return tdb, sid
+
+
 def test_claim_takes_a_queued_task_once(world):
     tdb, sid = world
     tdb.tasks.insert_one(contracts.Task(session_id=sid, type="commit_budget", agent_id="agent:programming",
@@ -58,30 +76,54 @@ def test_claim_takes_a_queued_task_once(world):
     assert orchestrator.claim(tdb, sid) is None
 
 
-def test_script_hands_off_through_tasks(stage2):
-    tdb, sid = stage2
+def test_run_agents_yields_task_chain_and_stops(program):
+    tdb, sid = program
     orch = orchestrator.Orchestrator(sid, db=tdb)
     orch.start()
-    results = [r for _, r in orch.run(SCRIPT[:3])]
-    assert [r.allowed for r in results] == [True, True, True], [r.reason for r in results]
+    done = list(orch.run_agents(LOOP, ["b1", "b2"], use_llm=False, max_rounds=10))
+    assert all(r.allowed and r.result for _, _, r in done), [r.reason for _, _, r in done]
     tasks = list(tdb.tasks.find({"session_id": sid}).sort("_id", 1))
-    assert [(t["type"], t["agent_id"], t["status"]) for t in tasks] == [
-        ("commit_budget", "agent:programming", "done"), ("commit_budget", "agent:programming", "done"),
-        ("create_work_order", "agent:workorder", "done")]
-    order = tdb.work_orders.find_one({"session_id": sid})
-    assert order["budget_id"] == tasks[0]["output"]["produced"]
+    out = [t["output"]["produced"] for t in tasks]
+    # round 1: plan both bridges, a reading for b1 arrives, commit the best line (b2), open its order;
+    # round 2: a reading for b2, commit b1 (now resting on its pending reading), open its order; round 3: nothing.
+    assert [(t["type"], t["agent_id"], t["status"], t["input"]["args"].get("asset_id"), t["input"]["depends_on"])
+            for t in tasks] == [
+        ("propose_plan", "agent:planner", "done", None, []),
+        ("propose_condition", "agent:intake", "done", "b1", []),
+        ("commit_budget", "agent:programming", "done", "b2", []),
+        ("create_work_order", "agent:workorder", "done", "b2", [out[2]]),
+        ("propose_condition", "agent:intake", "done", "b2", []),
+        ("commit_budget", "agent:programming", "done", "b1", [out[1]]),
+        ("create_work_order", "agent:workorder", "done", "b1", [out[5]])]
+    assert [{k: t["input"][k] for k in ("offered", "picked", "by", "model")} for t in tasks[1:3]] == [
+        {"offered": 2, "picked": 0, "by": "script", "model": None}] * 2
+    assert [m for _, m, _ in done] == [{k: t["input"][k] for k in ("offered", "picked", "by", "model")} for t in tasks]
     assert ledger.replay(sid, db=tdb)[0]["type"] == "session_started"
+    assert _status(tdb, sid) == "running"
+    assert list(orch.run_agents(LOOP, ["b1", "b2"], use_llm=False, max_rounds=10)) == []
+
+
+def test_run_agents_stops_at_max_rounds_and_at_a_deny(program):
+    tdb, sid = program
+    orch = orchestrator.Orchestrator(sid, db=tdb)
+    orch.start()
+    assert [s.tool for s, _, _ in orch.run_agents(LOOP, ["b1", "b2"], use_llm=False, max_rounds=1)] == [
+        "propose_plan", "propose_condition", "commit_budget", "create_work_order"]
+    tdb.policies.update_one({"tool": "commit_budget", "status": "active"}, {"$set": {"roles": ["nobody"]}})
+    done = list(orch.run_agents(LOOP, ["b1", "b2"], use_llm=False, max_rounds=10))
+    assert [(s.tool, r.allowed) for s, _, r in done] == [("propose_condition", True), ("commit_budget", False)]
+    assert tdb.tasks.find_one({"session_id": sid}, sort=[("_id", -1)])["status"] == "failed"
     assert _status(tdb, sid) == "running"
 
 
-def test_stop_halts_and_rolls_back(stage2):
-    tdb, sid = stage2
+def test_stop_mid_loop_rolls_back(program):
+    tdb, sid = program
     orch = orchestrator.Orchestrator(sid, db=tdb)
     orch.start()
     results, t0 = [], None
-    for _, r in orch.run(SCRIPT):
+    for _, _, r in orch.run_agents(LOOP, ["b1", "b2"], use_llm=False, max_rounds=10):
         results.append(r)
-        if len(results) == 3:
+        if len(results) == 4:
             _request_stop(tdb, sid)
             t0 = time.monotonic()
     while _status(tdb, sid) != "rolled_back" and time.monotonic() - t0 < 10:
@@ -89,12 +131,13 @@ def test_stop_halts_and_rolls_back(stage2):
     elapsed = time.monotonic() - t0
     orch.watcher.join(timeout=10)
     assert _status(tdb, sid) == "rolled_back"
-    assert len(results) == 3 and all(r.allowed for r in results)
+    assert len(results) == 4 and all(r.allowed for r in results)
     assert tdb.budget_ledger.count_documents({"status": "committed"}) == 0
     assert tdb.work_orders.count_documents({"status": {"$ne": "cancelled"}}) == 0
-    assert tdb.tasks.count_documents({"session_id": sid}) == 3
+    assert tdb.plans.count_documents({"superseded": False}) == 0
+    assert tdb.tasks.count_documents({"session_id": sid}) == 4
     types = [e["type"] for e in ledger.replay(sid, db=tdb)]
-    assert types.count("compensated") == 3 and types[-1] == "session_ended"
+    assert types.count("compensated") == 4 and types[-1] == "session_ended"
     assert types.index("abort_observed") < types.index("compensated")
     assert ledger.verify(sid, db=tdb) == (True, None)
     assert elapsed < 5, f"stop to rolled_back took {elapsed:.2f} s"
@@ -114,11 +157,11 @@ def test_stop_during_tool(stage2):
     orch.start()
     stopper = threading.Thread(target=lambda: started.wait(10) and _request_stop(tdb, sid))
     stopper.start()
-    results = [r for _, r in orch.run(SCRIPT[:2])]
+    results = [orch.submit(step) for step in SCRIPT]
     stopper.join()
     orch.watcher.join(timeout=10)
     assert _status(tdb, sid) == "rolled_back"
-    assert len(results) == 1 and results[0].result is not None
+    assert results[0].result is not None and results[1] is None
     types = [e["type"] for e in ledger.replay(sid, db=tdb)]
     assert types.count("executed") == 1
     assert types.index("executed") < types.index("abort_observed")
