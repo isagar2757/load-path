@@ -28,7 +28,7 @@ def _ms(ts: datetime) -> datetime:
 
 def _default(o: Any) -> str:
     if isinstance(o, datetime):
-        return _ms(o).strftime("%Y-%m-%dT%H:%M:%S.") + f"{_ms(o).microsecond // 1000:03d}Z"
+        return _ms(o).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     if isinstance(o, ObjectId):
         return str(o)
     raise TypeError(f"not canonicalisable: {type(o).__name__}")
@@ -47,8 +47,8 @@ def event_hash(prev_hash: str, event: dict) -> str:
 def append(session_id: str, event: dict, db=None) -> dict:
     """Add `event` as the next `seq` of the session; returns the stored document.
 
-    `seq` and `prev_hash` come from the session's last event; the unique `{session_id, seq}` index turns a
-    concurrent append into a retry instead of a fork.
+    `seq` and `prev_hash` come from the session's last event; the unique `{session_id, seq}` index (created by
+    setup_db.py) turns a concurrent append into a retry instead of a fork. `ts` is always stamped here.
     """
     d = _db(db)
     for _ in range(_RETRIES):
@@ -56,7 +56,7 @@ def append(session_id: str, event: dict, db=None) -> dict:
                                        projection={"seq": 1, "hash": 1})
         seq, prev = (last["seq"] + 1, last["hash"]) if last else (1, GENESIS_HASH)
         doc = {**event, "session_id": session_id, "seq": seq, "prev_hash": prev,
-               "ts": _ms(event.get("ts") or datetime.now(UTC)), "hash": ""}
+               "ts": _ms(datetime.now(UTC)), "hash": ""}
         doc = AuditEvent.model_validate(doc).model_dump()
         doc["hash"] = event_hash(prev, doc)
         try:
@@ -64,7 +64,9 @@ def append(session_id: str, event: dict, db=None) -> dict:
         except DuplicateKeyError:
             continue
         if ObjectId.is_valid(session_id):
-            d.sessions.update_one({"_id": ObjectId(session_id)}, {"$set": {"audit_head": doc["hash"]}})
+            # Guarded on the previous head so a late writer cannot move the head backwards.
+            d.sessions.update_one({"_id": ObjectId(session_id), "audit_head": prev},
+                                  {"$set": {"audit_head": doc["hash"]}})
         return doc
     raise RuntimeError(f"ledger append contended {_RETRIES} times for session {session_id}")
 
@@ -75,10 +77,19 @@ def replay(session_id: str, db=None) -> list[dict]:
 
 
 def verify(session_id: str, db=None) -> tuple[bool, int | None]:
-    """Recompute the chain. Returns `(True, None)` or `(False, n)`: the first position whose seq or hash is wrong."""
-    prev = GENESIS_HASH
-    for n, ev in enumerate(replay(session_id, db=db), start=1):
+    """Recompute the chain. Returns `(True, None)` or `(False, n)`: the first position whose seq or hash is wrong.
+
+    If a session document exists, its `audit_head` must equal the last hash; otherwise events were removed from
+    the end and `n` is the first missing position.
+    """
+    d = _db(db)
+    prev, n = GENESIS_HASH, 0
+    for n, ev in enumerate(replay(session_id, db=d), start=1):
         if ev.get("seq") != n or ev.get("prev_hash") != prev or ev.get("hash") != event_hash(prev, ev):
             return False, n
         prev = ev["hash"]
+    session = d.sessions.find_one({"_id": ObjectId(session_id)}, {"audit_head": 1}) \
+        if ObjectId.is_valid(session_id) else None
+    if session is not None and session.get("audit_head", GENESIS_HASH) != prev:
+        return False, n + 1
     return True, None

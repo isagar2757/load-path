@@ -106,3 +106,26 @@ def test_tool_error_logs_failed(world):
     r = gate.guarded_call(sid, "agent:programming", "write_scratch", {"n": 1}, "why", db=tdb)
     assert r.allowed is True and r.result is None and "tool broke" in r.reason
     assert [e["type"] for e in _events(tdb, sid)] == ["decision", "failed"]
+
+
+def test_role_enforced_when_policy_lists_no_checks(world):
+    tdb, sid = world
+    tdb.policies.update_one({"tool": "write_scratch"}, {"$set": {"checks": []}})
+    r = gate.guarded_call(sid, "agent:intake", "write_scratch", {"n": 1}, "why", db=tdb)
+    assert r.allowed is False and r.reason.startswith("role")
+    assert tdb.scratch.count_documents({}) == 0
+
+
+def test_unrecordable_result_still_logged_as_failed(world):
+    tdb, sid = world
+
+    def odd(db, args):
+        db.scratch.insert_one({"n": args["n"]})
+        return {"produced": {1, 2}}  # a set: cannot be canonicalised
+
+    gate.register_tool("write_scratch", odd, _snapshot, _undo, None)
+    r = gate.guarded_call(sid, "agent:programming", "write_scratch", {"n": 1}, "why", db=tdb)
+    assert r.allowed is True and r.reason.startswith("ledger")
+    evs = _events(tdb, sid)
+    assert [e["type"] for e in evs] == ["decision", "failed"]
+    assert evs[1]["reason"].startswith("ledger")

@@ -1,4 +1,6 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+
+from bson import ObjectId
 
 from contracts import GENESIS_HASH
 from core import ledger
@@ -6,7 +8,7 @@ from core import ledger
 
 def _event(i):
     return {"type": "decision", "principal_id": "user:owner_a", "actor_id": "agent:programming",
-            "tool": "write_scratch", "args": {"n": i}, "decision": "allow", "ts": datetime.now(UTC)}
+            "tool": "write_scratch", "args": {"n": i}, "decision": "allow"}
 
 
 def test_append_chains_hashes(tdb):
@@ -37,3 +39,18 @@ def test_replay_returns_events_in_seq_order(tdb):
     for i in range(3):
         ledger.append("s1", _event(i), db=tdb)
     assert [e["args"]["n"] for e in ledger.replay("s1", db=tdb)] == [0, 1, 2]
+
+
+def test_append_stamps_ts_itself(tdb):
+    old = datetime.now(UTC) - timedelta(hours=1)
+    ev = ledger.append("s1", {**_event(0), "ts": old}, db=tdb)
+    assert ev["ts"] > old + timedelta(minutes=59)
+
+
+def test_verify_flags_truncated_tail(world):
+    tdb, sid = world
+    for i in range(3):
+        ledger.append(sid, _event(i), db=tdb)
+    assert tdb.sessions.find_one({"_id": ObjectId(sid)})["audit_head"] == ledger.replay(sid, db=tdb)[-1]["hash"]
+    tdb.audit_events.delete_one({"session_id": sid, "seq": 3})
+    assert ledger.verify(sid, db=tdb) == (False, 3)

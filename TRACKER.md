@@ -57,6 +57,7 @@ IDs: `S*` Sagar (Claude Code) · `A*` Arad (Cursor) · `G*` stage gate (both) ·
 
 ## Log
 - 2026-11-14 — S1: `core/ledger.py`, `core/gate.py`, `tests/core/` on `feat/s1-ledger-gate`. `uv run pytest -q`: 24 passed (Atlas); without `MONGODB_URI`: 11 passed, 13 skipped. `guarded_call` and ledger functions take an optional `db=` keyword (tests pass `capital_test`); default is `db.get_db()`. Checks other than `role` deny as `not implemented` until S2.
+- 2026-11-14 — S1 `/code-review` (medium): fixed post-execution ledger failure escaping `guarded_call`, `policy.roles` always enforced (beyond formulas §1: role binds even if not listed in `checks`), guarded `audit_head` update, `verify` flags tail truncation via `audit_head`, ledger stamps `ts` itself, driver error text kept out of `reason`. Deferred: unserialisable args deny without a ledger record; deny events written for unknown or ended sessions; `append` relies on the unique index from `setup_db.py` (A0). `uv run pytest -q`: 28 passed.
 - 2026-11-14 — Tracker and shared ADLC docs added on `main` by agreement as a one-off; later work goes through branches.
 - 2026-11-14 — ADLC-2: hooks (pre-commit, commit-msg, post-commit Mongo log, pre-push), `scripts/check.sh` shared with CI, `scripts/adlc_log.py`, `scripts/setup.sh`, Claude skill + SessionStart hook, Cursor rule, CI workflow, PR template. Local run: `setup.sh` all ok.
 - 2026-11-14 — RELAY: relay loop added; `ADLC_AUTHOR` required (`sagar`/`arad`); stages broken into S*/A*/G*/F* rows.
