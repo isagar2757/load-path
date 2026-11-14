@@ -141,3 +141,25 @@ def test_gate_denies_when_atlas_down():
         dead.client.close()
     assert r.allowed is False and r.reason
     assert ran == []
+
+
+@pytest.mark.parametrize("check", ["jurisdiction", "has_commitment"])
+@pytest.mark.parametrize("aid", [{"$exists": True}, {"$ne": None}, ["a1"], True, ""])
+def test_asset_id_must_be_scalar(world, check, aid):
+    tdb, sid = world
+    _checks(tdb, check)
+    tdb.assets.insert_one({"_id": "a1", "region": "r1"})
+    _line(tdb, sid, "a1", 10)
+    r = _call(tdb, sid, {"asset_id": aid})
+    assert r.allowed is False and r.reason.startswith(check)
+    assert tdb.scratch.count_documents({}) == 0
+
+
+def test_missing_limit_fields_deny_with_check_name(world):
+    tdb, sid = world
+    _checks(tdb, "spend_limit")
+    tdb.principals.update_one({"_id": "user:owner_a"}, {"$unset": {"spend_limit": ""}})
+    assert _call(tdb, sid, {"amount": 1}).reason.startswith("spend_limit")
+    _checks(tdb, "envelope")
+    tdb.sessions.update_one({"_id": ObjectId(sid)}, {"$unset": {"budget_envelope": ""}})
+    assert _call(tdb, sid, {"amount": 1}).reason.startswith("envelope")

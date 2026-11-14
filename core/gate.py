@@ -53,8 +53,9 @@ def _amount(ctx: dict, check: str) -> float:
 
 def _asset_id(ctx: dict, check: str):
     a = ctx["args"].get("asset_id")
-    if a is None:
-        raise Deny(f"{check}: args.asset_id missing")
+    # Scalars only: a dict would be read as a query operator ($exists, $ne) and bypass the check.
+    if isinstance(a, bool) or not isinstance(a, str | int) or a == "":
+        raise Deny(f"{check}: args.asset_id must be a non-empty string or integer")
     return a
 
 
@@ -64,8 +65,11 @@ def _check_spend_limit(ctx: dict, params: dict) -> None:
     human = ctx["db"].principals.find_one({"_id": hid})
     if human is None or human.get("kind") != "human" or not human.get("active"):
         raise Deny(f"spend_limit: session principal {hid} missing, inactive or not human")
-    if amount > human["spend_limit"]:
-        raise Deny(f"spend_limit: {amount} exceeds {hid} limit {human['spend_limit']}")
+    limit = human.get("spend_limit")
+    if not isinstance(limit, int | float) or isinstance(limit, bool):
+        raise Deny(f"spend_limit: {hid} has no spend_limit")
+    if amount > limit:
+        raise Deny(f"spend_limit: {amount} exceeds {hid} limit {limit}")
 
 
 def _committed(ctx: dict, extra: dict | None = None) -> dict:
@@ -77,7 +81,9 @@ def _check_envelope(ctx: dict, params: dict) -> None:
     rows = list(ctx["db"].budget_ledger.aggregate([
         {"$match": _committed(ctx)}, {"$group": {"_id": None, "total": {"$sum": "$amount"}}}]))
     used = rows[0]["total"] if rows else 0
-    envelope = ctx["session"]["budget_envelope"]
+    envelope = ctx["session"].get("budget_envelope")
+    if not isinstance(envelope, int | float) or isinstance(envelope, bool):
+        raise Deny("envelope: session has no budget_envelope")
     if used + amount > envelope:
         raise Deny(f"envelope: committed {used} + {amount} exceeds envelope {envelope}")
 
