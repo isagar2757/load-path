@@ -12,7 +12,7 @@ from core import gate, ledger, revert
 
 @pytest.fixture(autouse=True)
 def domain(world):
-    tdb, _ = world
+    tdb, sid = world
     systems.register()
     now = datetime.now(UTC)
     tdb.principals.insert_many([
@@ -20,6 +20,8 @@ def domain(world):
                             active=True).model_dump(by_alias=True)
         for aid in ("agent:workorder", "agent:orchestrator")])
     tdb.policies.insert_many(setup_db._policies(now))
+    tdb.plans.insert_one({"session_id": sid, "seq": 1, "superseded": False,
+                          "lines": [{"asset_id": a, "cost": 30.0} for a in ("b1", "b2")]})
     tdb.assets.insert_many([{"_id": "b1", "region": "r1"}, {"_id": "b2", "region": "r1"}])
     tdb.condition_records.insert_many([{"_id": "c1", "asset_id": "b1", "status": "pending"},
                                        {"_id": "c2", "asset_id": "b2", "status": "pending"}])

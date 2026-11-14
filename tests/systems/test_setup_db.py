@@ -46,6 +46,22 @@ def test_setup_db_runs_twice_without_error(test_db):
 
 
 @needs_atlas
+def test_seed_limits_admit_largest_plan_line_and_commit_requires_plan(test_db):
+    from engine.plan import TREATMENTS
+
+    setup_db.setup(A0_TEST_DB)
+    largest = max(rate for _, rate in TREATMENTS.values()) * 13487.1044
+    owner = test_db.principals.find_one({"_id": "user:owner_a"})
+    engineer = test_db.principals.find_one({"_id": "user:engineer_b"})
+    assert owner["spend_limit"] >= largest
+    assert engineer["spend_limit"] < owner["spend_limit"]
+    policy = test_db.policies.find_one({"tool": "commit_budget", "status": "active"})
+    names = [ch["name"] for ch in policy["checks"]]
+    assert names[-1] == "in_approved_plan"
+    assert names.index("spend_limit") < names.index("in_approved_plan")
+
+
+@needs_atlas
 def test_principals_reject_missing_kind(test_db):
     setup_db.setup(A0_TEST_DB)
     with pytest.raises(WriteError) as ei:
