@@ -1,4 +1,4 @@
-"""Control-surface HTTP API: SSE audit feed, session stop (A1), condition approve/reject (A5)."""
+"""Control-surface HTTP API: SSE audit feed, session stop (A1), condition approve/reject (A5), demo pause cue."""
 from __future__ import annotations
 
 import json
@@ -37,6 +37,10 @@ class RejectBody(ApproveBody):
     reason: str = Field(pattern=r"\S")
 
 
+class PauseBody(BaseModel):
+    cue: str = Field(pattern=r"\S", max_length=200)
+
+
 def _jsonable(value: Any) -> Any:
     if isinstance(value, ObjectId):
         return str(value)
@@ -55,6 +59,24 @@ def create_app(database=None) -> FastAPI:
 
     def d():
         return database if database is not None else dbmod.get_db()
+
+    # Demo pacing only: session id -> the cue `run_demo.py --pause page` waits on. In memory, no domain write,
+    # so it does not go through the gate and is not in the ledger.
+    waiting: dict[str, str] = {}
+
+    @app.put("/sessions/{session_id}/pause")
+    def set_pause(session_id: str, body: PauseBody):
+        waiting[session_id] = body.cue
+        return {"cue": body.cue}
+
+    @app.get("/sessions/{session_id}/pause")
+    def get_pause(session_id: str):
+        return {"cue": waiting.get(session_id)}
+
+    @app.delete("/sessions/{session_id}/pause")
+    def clear_pause(session_id: str):
+        waiting.pop(session_id, None)
+        return {"cue": None}
 
     @app.get("/")
     def index():

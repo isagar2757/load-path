@@ -266,3 +266,23 @@ def test_session_state_without_plan(world):
     body = TestClient(create_app(database=d)).get(f"/sessions/{sid}/state").json()
     assert body["plan"] is None
     assert body["budget"] == body["work_orders"] == body["inspections"] == []
+
+
+def test_pause_cue_is_set_read_and_cleared():
+    """Demo pacing: the script sets a cue, the page's Continue button clears it. In memory, no domain write."""
+    from web.server import create_app
+
+    client = TestClient(create_app(database=object()))
+    url = "/sessions/abc/pause"
+    assert client.get(url).json() == {"cue": None}
+    assert client.put(url, json={"cue": "a reading arrives"}).json() == {"cue": "a reading arrives"}
+    assert client.get(url).json() == {"cue": "a reading arrives"}
+    assert client.get("/sessions/other/pause").json() == {"cue": None}
+    assert client.delete(url).json() == {"cue": None}
+    assert client.get(url).json() == {"cue": None}
+    assert client.put(url, json={"cue": "  "}).status_code == 422
+
+
+def test_index_has_continue_control():
+    html = (Path(__file__).resolve().parents[2] / "web" / "index.html").read_text()
+    assert 'id="continue"' in html and "/pause" in html

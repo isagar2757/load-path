@@ -4,13 +4,17 @@
     uv run python run_demo.py --reset             # interactive: Approve, Reject and Stop come from the page
     uv run python run_demo.py --reset --auto      # no page: the human actions go through the same server routes
     uv run python run_demo.py --reset --auto --llm
-    uv run python run_demo.py --reset --llm --pause   # live demo: Enter starts each agent section
+    uv run python run_demo.py --reset --llm --pause        # live demo: Enter starts each agent section
+    uv run python run_demo.py --reset --llm --pause page   # same, with a Continue button on the page
 
 Amounts are assumptions and the two proposed condition ratings are MOCK input (README). The orchestrator's turn
 loop asks each agent for its next step; every domain write goes through `guarded_call`. Exits 1 when a beat differs from the script.
 """
 import argparse
+import json
 import time
+import urllib.error
+import urllib.request
 from datetime import UTC, datetime
 
 from bson import ObjectId
@@ -31,6 +35,7 @@ OFF_PLAN = 12_345.0       # assumption: an amount no plan line has
 SEED_KEY = r"^[^:]+:\d{4}$"  # condition ids the asset loader writes; anything else is from an earlier run
 TIMEOUT = 60.0         # seconds for the watcher to finish a revert and re-plan
 HUMAN_TIMEOUT = 1800.0  # seconds to wait for a click on the page
+PAGE = "http://127.0.0.1:8000"   # where the page server runs (docstring above)
 MAX_ROUNDS = 10        # turn-loop bound; a pass normally ends when no agent has an option
 
 
@@ -60,6 +65,18 @@ def reset(d) -> None:
     setup_db.setup(d.name)
 
 
+def show_rules(d) -> None:
+    """The rules the gate enforces in this run, read from the database: who may call each tool, and the limits."""
+    print("rules (active policies, people and their limits):", flush=True)
+    for pol in d.policies.find({"status": "active"}).sort("tool", 1):
+        print(f"    {pol['tool']:<19} role {', '.join(pol['roles']):<12} "
+              f"checks: {', '.join(ch['name'] for ch in pol['checks'])}", flush=True)
+    for who in d.principals.find({"kind": "human"}).sort("_id", 1):
+        print(f"    {who['_id']:<19} role {', '.join(who['roles']):<12} spend limit {who['spend_limit']:,.0f}",
+              flush=True)
+    print(f"    session envelope {ENVELOPE:,.0f}, region {setup_db.REGION}", flush=True)
+
+
 def wait_for(what: str, done, timeout: float = TIMEOUT) -> None:
     end = time.monotonic() + timeout
     while not done():
@@ -75,7 +92,8 @@ def main() -> None:
     p.add_argument("--llm", action="store_true", help="agents pick from code-built options and write the rationale")
     p.add_argument("--wait", type=float, default=8.0, help="seconds to open the page before the run")
     p.add_argument("--step", type=float, default=1.5)
-    p.add_argument("--pause", action="store_true", help="live demo: wait for Enter before each agent section")
+    p.add_argument("--pause", nargs="?", const="enter", choices=("enter", "page"),
+                   help="live demo: wait before each agent section for Enter, or for Continue on the page")
     a = p.parse_args()
 
     d = dbmod.get_db()
@@ -90,12 +108,30 @@ def main() -> None:
         principal_id=OWNER, task="full demo beat", region=setup_db.REGION, budget_envelope=ENVELOPE,
         status="running", created_at=now, updated_at=now).model_dump()).inserted_id)
     oid = ObjectId(sid)
-    print(f"session {sid}\nopen http://127.0.0.1:8000/?session_id={sid}&actor={OWNER}", flush=True)
+    print(f"session {sid}\nopen {PAGE}/?session_id={sid}&actor={OWNER}", flush=True)
+    show_rules(d)
     time.sleep(a.wait)
 
+    def page_cue(method: str, cue: str | None = None) -> str | None:
+        """Set (PUT) or read (GET) the cue the page shows next to its Continue button."""
+        req = urllib.request.Request(f"{PAGE}/sessions/{sid}/pause", method=method,
+                                     data=json.dumps({"cue": cue}).encode() if cue else None,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return json.load(resp)["cue"]
+        except urllib.error.URLError as e:
+            raise SystemExit(f"FAILED: --pause page needs the page server at {PAGE} ({e.reason})") from e
+
     def pause(cue: str) -> None:
-        if a.pause:
+        if a.pause == "enter":
             input(f"    [Enter] {cue} ")
+        elif a.pause == "page":
+            page_cue("PUT", cue)
+            print(f"    on the page: Continue ({cue})", flush=True)
+            wait_for("Continue or Stop from the page", lambda: stopped() or page_cue("GET") is None, HUMAN_TIMEOUT)
+            if stopped():
+                finish(early=True)
 
     beat = Beat()
     orch = orchestrator.Orchestrator(sid, db=d)

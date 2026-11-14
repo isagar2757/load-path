@@ -167,6 +167,8 @@ Tests: `uv run pytest -q tests/core tests/engine`. Result on this branch, 2026-1
 - A step denied by policy ends the loop pass. The retry described in formulas.md section 6 (up to 2) is not built.
 - The two DENY beats in the demo are probes submitted by `run_demo.py`, not agent choices.
 - Stop sets the session status directly; it does not go through the gate (tracker item X4).
+- The Continue button (`--pause page`) only paces the demo script. Its cue is held in the page server's memory,
+  writes nothing to the database, and is not in the ledger.
 - The tool takes published ratings as given. It makes no safety or engineering judgment.
 
 **UNVERIFIED**
