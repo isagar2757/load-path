@@ -60,8 +60,8 @@ A PR that breaks a rule below fails review. The reviewer cites the rule number.
 | Path | Owner |
 |---|---|
 | `contracts.py`, `db.py`, `pyproject.toml`, `.env.example`, `LICENSE`, `README.md`, `AGENTS.md` | both (README sections: whoever built the feature) |
-| `core/` (gate, ledger, revert, orchestrator, agents), `tests/core/`, `run_demo.py` | Sagar (Arad reviews `run_demo.py`) |
-| `setup_db.py`, `systems/`, `engine/`, `web/`, `tests/systems/`, `tests/engine/` | Arad |
+| `core/` (gate, ledger, revert, orchestrator, agents), `tests/core/`, `run_demo.py` | Sagar |
+| `setup_db.py`, `systems/`, `engine/`, `web/`, `tests/systems/`, `tests/engine/` | Sagar (pair on one machine from 17:14 until the demo; decision on A2) |
 
 - Never edit a file you do not own; ask its owner.
 - `contracts.py` is locked after Stage 0. A change needs both to agree out loud, then one commit by whoever is free.
