@@ -5,8 +5,8 @@
     uv run python run_demo.py --reset --auto      # no page: the human actions go through the same server routes
     uv run python run_demo.py --reset --auto --llm
 
-Amounts are assumptions and the two proposed condition ratings are MOCK input (README). The orchestrator relays
-every agent step; every domain write goes through `guarded_call`. Exits 1 when a beat differs from the script.
+Amounts are assumptions and the two proposed condition ratings are MOCK input (README). The orchestrator's turn
+loop asks each agent for its next step; every domain write goes through `guarded_call`. Exits 1 when a beat differs from the script.
 """
 import argparse
 import time
@@ -30,6 +30,7 @@ OFF_PLAN = 12_345.0       # assumption: an amount no plan line has
 SEED_KEY = r"^[^:]+:\d{4}$"  # condition ids the asset loader writes; anything else is from an earlier run
 TIMEOUT = 60.0         # seconds for the watcher to finish a revert and re-plan
 HUMAN_TIMEOUT = 1800.0  # seconds to wait for a click on the page
+MAX_ROUNDS = 10        # turn-loop bound; a pass normally ends when no agent has an option
 
 
 class Beat:
@@ -125,26 +126,25 @@ def main() -> None:
         print("demo ok" + (" (stopped early)" if early else ""), flush=True)
         raise SystemExit(0)
 
-    def pick(agent, scope: list[str]) -> Step:
-        """The agent's step for `scope`: the code-ranked best, or in LLM mode the model's pick among the options."""
-        step, meta = agents.choose(agent, d, sid, scope, a.llm)
-        if step is None:
+    def show(step: Step, r: c.ToolResult | None, want: bool) -> None:
+        if r is None:   # the session stopped before the step was queued
+            finish(early=True)
+        shown = {k: v for k, v in step.args.items() if k in ("asset_id", "amount", "rating")}
+        beat.show(c.TOOLS[step.tool].actor, step.tool, r.allowed, r.reason, want, f"{shown} | {step.rationale}")
+        time.sleep(a.step)
+
+    def relay(agent_modules: list, scope: list[str], expect: list[str], max_rounds: int = MAX_ROUNDS) -> list:
+        """Run the turn loop until it ends by itself; each step must be allowed and match `expect` (tool names)."""
+        out = []
+        for step, meta, r in orch.run_agents(agent_modules, scope, a.llm, max_rounds):
+            print(f"    {c.TOOLS[step.tool].actor} offered {meta['offered']}, picked {meta['picked']}, "
+                  f"by {meta['by']}" + (f" ({meta['model']})" if meta["model"] else ""), flush=True)
+            show(step, r, True)
+            out.append((step, r))
+        if [step.tool for step, _ in out] != expect:
             if stopped():
                 finish(early=True)
-            raise SystemExit(f"FAILED: {agent.AGENT_ID} has no option for {scope}")
-        print(f"    {agent.AGENT_ID} offered {meta['offered']}, picked {meta['picked']}, by {meta['by']}"
-              + (f" ({meta['model']})" if meta["model"] else ""), flush=True)
-        return step
-
-    def relay(script: list[Step], expect: list[bool]) -> list[c.ToolResult]:
-        out = []
-        for (step, r), want in zip(orch.run(script), expect):
-            shown = {k: v for k, v in step.args.items() if k in ("asset_id", "amount", "rating")}
-            beat.show(c.TOOLS[step.tool].actor, step.tool, r.allowed, r.reason, want, f"{shown} | {step.rationale}")
-            out.append(r)
-            time.sleep(a.step)
-        if len(out) != len(expect):
-            finish(early=True)
+            raise SystemExit(f"FAILED: expected agent steps {expect}, got {[step.tool for step, _ in out]}")
         return out
 
     def human(actor: str, action: str, condition_id: str, expect: bool, reason: str | None = None) -> None:
@@ -174,28 +174,28 @@ def main() -> None:
 
     # 1. intake proposes a reading, the owner approves it, the planner solves.
     scope = [x["_id"] for x in d.assets.find({"region": setup_db.REGION}, {"_id": 1}, sort=[("_id", 1)], limit=3)]
-    cond1 = relay([pick(intake, scope[:1])], [True])[0].result["produced"]
+    cond1 = relay([intake], scope[:1], ["propose_condition"])[0][1].result["produced"]
     human(OWNER, "approve", cond1, True)
-    relay([pick(planner, scope)], [True])
+
+    # 2. one round: the planner solves, programming picks which plan line to commit first, the work order follows.
+    _, (commit_a, done_a), _ = relay([planner, programming, workorder], scope,
+                                     ["propose_plan", "commit_budget", "create_work_order"], max_rounds=1)
     plan = active_plan()
-    if len([l for l in plan["lines"] if l["asset_id"] in scope]) < 3:
-        raise SystemExit(f"plan {plan.get('_id')} has no line for one of {scope}")
     print(f"    plan {plan['_id']}: {len(plan['lines'])} lines, total cost "
           f"{sum(l['cost'] for l in plan['lines']):,.2f} of envelope {ENVELOPE:,.2f}", flush=True)
-
-    # 2. programming picks which plan line to commit first; work order follows; two commitments are denied.
-    commit_a = pick(programming, scope)
-    a_id = commit_a.args["asset_id"]
+    a_id, budget_a = commit_a.args["asset_id"], done_a.result["produced"]
     b_id = next(x for x in scope[1:] if x != a_id)   # a bridge with no reading in this session yet
-    budget_a = relay([commit_a], [True])[0].result["produced"]
-    relay([pick(workorder, [a_id])], [True])
-    relay([
-        Step("commit_budget", {"asset_id": b_id, "amount": OFF_PLAN}, "off-plan attempt: amount is not a plan line"),
-        Step("commit_budget", {"asset_id": b_id, "amount": OVER_LIMIT}, "over-limit attempt"),
-    ], [False, False])
+
+    # Probes, not agent choices: two commitments the gate must deny.
+    for probe in (
+        Step("commit_budget", {"asset_id": b_id, "amount": OFF_PLAN}, "PROBE off-plan: amount is not a plan line"),
+        Step("commit_budget", {"asset_id": b_id, "amount": OVER_LIMIT}, "PROBE over-limit: above the spend limit"),
+    ):
+        show(probe, orch.submit(probe), False)
 
     # 3. a second reading arrives; agents act on it while it is pending; the engineer cannot decide it.
-    done = [relay([pick(agent, [b_id])], [True])[0] for agent in (intake, programming, workorder)]
+    done = [r for _, r in relay([intake, programming, workorder], [b_id],
+                                ["propose_condition", "commit_budget", "create_work_order"])]
     cond2, budget_b, order_b = (r.result["produced"] for r in done)
     human(ENGINEER, "approve", cond2, False)
 

@@ -20,7 +20,6 @@ class Step(NamedTuple):
     args: dict
     rationale: str
     depends_on: tuple[str, ...] = ()   # ids this step relies on; a revert of one of them reverts the step
-    handoff: dict[str, int] = {}   # arg name -> index of the earlier step whose `produced` id fills it
 
 
 def act(d, task: dict) -> ToolResult:
