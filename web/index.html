@@ -3,137 +3,248 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>load-path</title>
+  <title>load-path: bridge capital control</title>
   <style>
     :root {
-      --paper: #eceff1; --panel: #ffffff; --ink: #0d1b2a; --muted: #46566a; --rule: #0d1b2a;
-      --allow: #0b6b3a; --deny: #b3141b; --warn: #8a4b00; --focus: #0050d0;
-      font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+      --paper: #e9eef0; --panel: #ffffff; --ink: #17242e; --muted: #52616c; --line: #cfd8dc;
+      --steel: #2c5a78; --steel-soft: #e3edf3;
+      --allow: #17663f; --allow-soft: #e4f2ea; --deny: #a3271f; --deny-soft: #fbe9e7;
+      --revert: #8a5a00; --revert-soft: #fff1d1; --focus: #1f6fd1;
+      font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
-    body { background: var(--paper); color: var(--ink); font-size: 18px; line-height: 1.35; display: flex; flex-direction: column; }
+    body { background: var(--paper); color: var(--ink); font-size: 16px; line-height: 1.4; display: flex; flex-direction: column; }
     :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-    button { font: inherit; font-weight: 700; padding: 0.35rem 1rem; border: 2px solid var(--ink); background: var(--panel); color: var(--ink); cursor: pointer; }
-    button:hover { background: var(--ink); color: var(--panel); }
-    input, select { font: inherit; padding: 0.3rem 0.5rem; border: 2px solid var(--ink); background: var(--panel); color: var(--ink); }
-    .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+    button { font: inherit; font-weight: 650; padding: 0.4rem 0.95rem; border-radius: 6px; border: 1.5px solid var(--ink); background: var(--panel); color: var(--ink); cursor: pointer; }
+    button:hover { background: var(--steel-soft); }
+    input, select { font: inherit; padding: 0.35rem 0.55rem; border-radius: 6px; border: 1.5px solid #8796a0; background: var(--panel); color: var(--ink); }
+    code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.88em; }
+    .err { color: var(--deny); font-weight: 650; font-size: 0.92rem; }
+    .err:empty { display: none; }
 
-    header { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; padding: 0.6rem 1.25rem; background: var(--ink); color: #fff; }
-    header h1 { margin: 0; font-size: 1.5rem; letter-spacing: 0.01em; }
-    header label { display: flex; gap: 0.5rem; align-items: center; font-weight: 600; }
-    header input, header select { border-color: #fff; }
-    #session { width: 17rem; }
-    #sess-status { font-weight: 800; padding: 0.15rem 0.7rem; border: 2px solid #fff; }
-    #sess-status[data-s="running"] { background: #fff; color: var(--allow); }
-    #sess-status[data-s="abort_requested"], #sess-status[data-s="aborted"] { background: var(--deny); border-color: var(--deny); }
-    #sess-status[data-s="reverting"] { background: #ffb020; color: var(--ink); border-color: #ffb020; }
-    #stop { background: var(--deny); border-color: var(--deny); color: #fff; margin-left: auto; font-size: 1.1rem; padding: 0.4rem 1.6rem; }
+    /* header: what this is, who you are, the stop control */
+    header { display: grid; grid-template-columns: 1fr auto auto auto; gap: 0.4rem 1.25rem; align-items: center; padding: 0.55rem 1.25rem; background: var(--ink); color: #fff; }
+    .brand h1 { margin: 0; font-size: 1.3rem; font-weight: 750; letter-spacing: 0.01em; }
+    .brand p { margin: 0; font-size: 0.95rem; color: #c7d3da; }
+    .field { display: flex; flex-direction: column; gap: 0.1rem; font-size: 0.8rem; color: #c7d3da; }
+    .field input, .field select { border-color: #6f8594; }
+    #session { width: 15.5rem; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85rem; }
+    #actor { font-weight: 650; min-width: 15rem; }
+    #actor-hint { color: #fff; font-size: 0.8rem; max-width: 15rem; }
+    #sess-status { font-weight: 750; padding: 0.3rem 0.8rem; border-radius: 999px; border: 1.5px solid #6f8594; color: #fff; white-space: nowrap; }
+    #sess-status[data-s="running"] { background: var(--allow); border-color: var(--allow); }
+    #sess-status[data-s="reverting"], #sess-status[data-s="abort_requested"], #sess-status[data-s="rolling_back"] { background: #f2b33d; color: var(--ink); border-color: #f2b33d; }
+    #sess-status[data-s="rolled_back"], #sess-status[data-s="failed"] { background: var(--deny); border-color: var(--deny); }
+    .stopbox { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; }
+    #stop { background: var(--deny); border-color: #fff; color: #fff; font-size: 1.05rem; padding: 0.45rem 1.3rem; }
     #stop:hover { background: #fff; color: var(--deny); }
-    #status { flex-basis: 100%; font-size: 0.95rem; min-height: 1.3em; }
+    #stop-msg { color: #ffc9c3; font-size: 0.8rem; max-width: 16rem; text-align: right; }
 
-    main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 1rem; padding: 1rem 1.25rem; }
-    section { background: var(--panel); border: 2px solid var(--rule); display: flex; flex-direction: column; min-height: 0; }
-    section > h2 { margin: 0; padding: 0.3rem 0.75rem; font-size: 1.05rem; border-bottom: 2px solid var(--rule); display: flex; justify-content: space-between; gap: 1rem; }
-    section > h2 span { font-weight: 500; color: var(--muted); }
+    /* guide: the next human action, and how the system works */
+    #guide { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.5rem; align-items: center; padding: 0.7rem 1.25rem; background: var(--panel); border-bottom: 1.5px solid var(--line); }
+    #next { display: flex; gap: 0.9rem; align-items: center; }
+    #next-tag { flex: none; font-weight: 750; font-size: 0.85rem; color: #fff; background: var(--steel); padding: 0.2rem 0.6rem; border-radius: 4px; }
+    #next[data-tone="act"] #next-tag { background: var(--revert); }
+    #next[data-tone="done"] #next-tag { background: var(--muted); }
+    #next-text { font-size: 1.2rem; font-weight: 700; }
+    #next-sub { font-size: 0.95rem; color: var(--muted); }
+    #next-sub code { background: var(--steel-soft); padding: 0.05rem 0.35rem; border-radius: 4px; color: var(--ink); }
+    #how { display: flex; gap: 0.35rem; list-style: none; margin: 0; padding: 0; font-size: 0.85rem; counter-reset: how; }
+    #how li { counter-increment: how; display: flex; flex-direction: column; padding: 0.3rem 0.6rem; border-left: 3px solid var(--steel); background: var(--steel-soft); max-width: 9.5rem; line-height: 1.25; }
+    #how li b::before { content: counter(how) ". "; color: var(--steel); }
+    #how li span { color: var(--muted); }
+
+    main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 1rem; padding: 0.9rem 1.25rem; }
+    section { background: var(--panel); border: 1.5px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; min-height: 0; }
+    section > header { all: unset; display: block; padding: 0.5rem 0.85rem 0.45rem; border-bottom: 1.5px solid var(--line); }
+    section h2 { margin: 0; font-size: 1.05rem; display: flex; justify-content: space-between; gap: 0.75rem; align-items: baseline; }
+    section h2 .meta { font-weight: 500; font-size: 0.85rem; color: var(--muted); text-align: right; }
+    section header p { margin: 0.1rem 0 0; font-size: 0.85rem; color: var(--muted); }
+    section.attn { border-color: var(--revert); box-shadow: 0 0 0 3px var(--revert-soft); }
     .body { overflow-y: auto; min-height: 0; }
     ul { list-style: none; margin: 0; padding: 0; }
-    li { padding: 0.4rem 0.75rem; border-bottom: 1px solid #b8c2cc; }
-    .empty { padding: 0.5rem 0.75rem; color: var(--muted); }
+    .empty { padding: 0.6rem 0.85rem; color: var(--muted); font-style: italic; }
 
-    #side { display: flex; flex-direction: column; gap: 0.75rem; min-height: 0; overflow-y: auto; padding-right: 2px; }
+    #side { display: flex; flex-direction: column; gap: 0.7rem; min-height: 0; overflow-y: auto; padding-right: 2px; }
     #side section { flex: none; }
-    #side .body { max-height: 11.5rem; }
+    #side .body { max-height: 10rem; }
 
     /* feed */
-    #feed li { display: grid; grid-template-columns: 5.2rem 5.4rem 1fr; gap: 0.1rem 0.75rem; align-items: baseline; }
-    #feed .t { color: var(--muted); font-size: 0.9rem; }
-    .mark { font-weight: 800; text-align: center; padding: 0.05rem 0.3rem; color: #fff; }
-    .mark.allow { background: var(--allow); }
-    .mark.deny { background: var(--deny); }
-    .mark.info { background: none; color: var(--muted); font-weight: 600; text-align: left; padding: 0; }
-    #feed .what { font-weight: 700; }
-    #feed .who { color: var(--muted); font-weight: 500; }
-    #feed .reason { grid-column: 3; color: var(--deny); font-weight: 700; }
-    #feed .why { grid-column: 3; font-size: 0.95rem; border-left: 4px solid var(--ink); padding-left: 0.6rem; }
-    #feed li.denied { background: #fbeaea; }
+    #feed > li { display: grid; grid-template-columns: 6.6rem 1fr; gap: 0.15rem 0.8rem; padding: 0.55rem 0.85rem; border-bottom: 1px solid var(--line); }
+    .badge { align-self: start; font-weight: 800; font-size: 0.85rem; text-align: center; padding: 0.2rem 0.3rem; border-radius: 4px; color: #fff; letter-spacing: 0.02em; }
+    .badge.allow { background: var(--allow); }
+    .badge.deny { background: var(--deny); }
+    .badge.sys { background: none; color: var(--muted); border: 1.5px solid var(--line); font-weight: 650; }
+    .badge.undo { background: var(--revert-soft); color: var(--revert); border: 1.5px solid var(--revert); }
+    .line1 { font-size: 1.02rem; }
+    .who { font-weight: 700; }
+    .id { color: var(--muted); font-size: 0.82rem; }
+    .bridge { font-weight: 700; }
+    .meta-line { grid-column: 2; font-size: 0.8rem; color: var(--muted); }
+    .why { grid-column: 2; font-size: 0.93rem; border-left: 3px solid var(--steel); padding-left: 0.55rem; color: #2c3b45; }
+    .why b, .denywhy b { font-weight: 650; }
+    .denywhy { grid-column: 2; color: var(--deny); font-weight: 650; }
+    .denywhy .raw { font-weight: 400; color: var(--muted); font-size: 0.82rem; margin-left: 0.4rem; }
+    .mock { display: inline-block; font-size: 0.75rem; font-weight: 800; color: #6a3fa0; border: 1.5px solid #6a3fa0; border-radius: 4px; padding: 0 0.3rem; margin-left: 0.4rem; vertical-align: 1px; }
+    #feed > li.empty { display: block; }
+    #feed li.deny { background: var(--deny-soft); }
+    #feed li.quiet { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+    #feed li.quiet .line1 { font-size: 0.88rem; color: var(--muted); }
+    #feed li.undo { background: var(--revert-soft); }
+    #feed li.system { background: #f3f6f7; }
+    #feed li.system .line1 { color: var(--muted); font-weight: 600; }
 
-    /* conditions */
-    #conditions li { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-    #conditions input { width: 8rem; }
-    #conditions .asset { font-weight: 700; flex-basis: 100%; }
+    /* pending readings */
+    #conditions li { padding: 0.6rem 0.85rem; border-bottom: 1px solid var(--line); display: grid; gap: 0.4rem; }
+    #conditions .asset { font-weight: 700; }
+    #conditions .controls { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+    #conditions .approve { background: var(--allow); border-color: var(--allow); color: #fff; }
+    #conditions .approve:hover { background: #0f4a2d; }
+    #conditions .reject { border-color: var(--deny); color: var(--deny); }
+    #conditions .reject:hover { background: var(--deny-soft); }
+    #conditions label { display: flex; flex-direction: column; font-size: 0.8rem; color: var(--muted); flex: 1; min-width: 11rem; }
 
-    table { width: 100%; border-collapse: collapse; }
-    td, th { padding: 0.25rem 0.75rem; text-align: left; border-bottom: 1px solid #b8c2cc; }
-    th { font-weight: 600; color: var(--muted); font-size: 0.9rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+    td, th { padding: 0.3rem 0.85rem; text-align: left; border-bottom: 1px solid var(--line); }
+    th { font-weight: 600; color: var(--muted); font-size: 0.8rem; position: sticky; top: 0; background: var(--panel); }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
-    tr.gone td { text-decoration: line-through; color: var(--muted); }
-    .tag { font-weight: 800; text-decoration: none; display: inline-block; }
-    tr.gone .tag { text-decoration: none; color: var(--deny); }
-    tfoot td { font-weight: 800; border-top: 2px solid var(--rule); border-bottom: 0; }
+    .st { font-weight: 700; font-size: 0.82rem; white-space: nowrap; }
+    tr.gone td:not(.st) { text-decoration: line-through; color: var(--muted); }
+    tr.gone .st { color: var(--revert); }
+    tr.live .st { color: var(--allow); }
+    tfoot td { font-weight: 700; border-top: 1.5px solid var(--ink); border-bottom: 0; position: sticky; bottom: 0; background: var(--panel); }
+    section h2 { flex-wrap: wrap; }
+    #plan-meta { text-align: left; }
+    #plan td { white-space: nowrap; }
     .over { color: var(--deny); }
+    .resolved { display: inline-block; font-size: 0.78rem; font-weight: 750; color: var(--revert); background: var(--revert-soft); border-radius: 4px; padding: 0 0.35rem; margin-right: 0.4rem; }
 
-    @media (max-width: 900px) { main { grid-template-columns: 1fr; overflow-y: auto; } #feed-sec { min-height: 24rem; } }
-    @media (prefers-reduced-motion: no-preference) { #feed li.fresh { animation: flash 1.2s ease-out; } @keyframes flash { from { background: #ffe9a8; } } }
+    /* present=1: one live event at a time, for recording */
+    .spot { outline: 4px solid #e8590c !important; outline-offset: -4px; }
+    #caption { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--ink); color: #fff; padding: 0.7rem 1.25rem; border-top: 4px solid #e8590c; }
+    body.present #caption { display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 1.5rem; align-items: center; }
+    body.present main { padding-bottom: 7.5rem; }
+    #cap1 { font-size: 1.45rem; font-weight: 700; }
+    #cap2 { font-size: 1.1rem; color: #c7d3da; grid-column: 1; }
+    #cap-ctl { grid-row: 1 / span 2; grid-column: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; font-size: 0.9rem; color: #c7d3da; }
+
+    @media (max-width: 1000px) {
+      header { grid-template-columns: 1fr 1fr; }
+      #guide { grid-template-columns: 1fr; }
+      main { grid-template-columns: 1fr; overflow-y: auto; }
+      #feed-sec { min-height: 24rem; }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      #feed li.fresh { animation: flash 1.4s ease-out; }
+      tr.changed td { animation: flash 2.4s ease-out; }
+      @keyframes flash { from { background: #ffe39a; } }
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>load-path</h1>
-    <label>session_id <input id="session" class="mono" /></label>
-    <span id="sess-status">no session</span>
-    <label>actor
-      <select id="actor">
-        <option value="">choose actor</option>
-        <option value="user:owner_a">user:owner_a</option>
-        <option value="user:engineer_b">user:engineer_b</option>
-      </select>
+    <div class="brand">
+      <h1>load-path</h1>
+      <p>AI agents plan bridge repairs and commit budget; every action passes a policy gate, and you stay in control.</p>
+    </div>
+    <label class="field">Session
+      <input id="session" placeholder="paste a session id" />
     </label>
-    <button type="button" id="stop">Stop</button>
-    <span id="status" role="status"></span>
+    <label class="field">Acting as
+      <select id="actor">
+        <option value="">Choose who you are</option>
+        <option value="user:owner_a">Owner A (user:owner_a)</option>
+        <option value="user:engineer_b">Engineer B (user:engineer_b)</option>
+      </select>
+      <span id="actor-hint"></span>
+    </label>
+    <div class="stopbox" id="stop-box">
+      <span id="sess-status">No session</span>
+      <button type="button" id="stop" title="Roll back everything this session committed">Stop and roll back</button>
+      <span id="stop-msg" role="status"></span>
+    </div>
   </header>
+
+  <div id="guide">
+    <div id="next" role="status">
+      <span id="next-tag">Next step</span>
+      <div><div id="next-text"></div><div id="next-sub"></div></div>
+    </div>
+    <ol id="how" aria-label="How this works">
+      <li><b>Agents propose</b><span>readings, a plan, budget, work orders</span></li>
+      <li><b>Gate decides</b><span>allows or denies by policy</span></li>
+      <li><b>Ledger records</b><span>every decision, hash-chained</span></li>
+      <li><b>You decide</b><span>approve, reject or stop</span></li>
+    </ol>
+  </div>
+
   <main>
     <section id="feed-sec">
-      <h2>Feed <span>every tool call, newest first</span></h2>
+      <header>
+        <h2>Activity <span class="meta" id="feed-meta"></span></h2>
+        <p>Every action an agent or person tried, newest first, as recorded in the ledger. The gate allowed or denied each one.</p>
+      </header>
       <div class="body"><ul id="feed"></ul></div>
     </section>
     <div id="side">
-      <section>
-        <h2>Pending conditions</h2>
+      <section id="cond-sec">
+        <header>
+          <h2>Pending readings</h2>
+          <p>New bridge condition readings waiting for the owner. Rejecting one reverts only the work that relied on it.</p>
+        </header>
         <div class="body"><ul id="conditions"></ul></div>
       </section>
-      <section>
-        <h2>Active plan <span id="plan-meta"></span></h2>
-        <div class="body"><table id="plan"></table></div>
-      </section>
-      <section>
-        <h2>Commitments</h2>
+      <section id="budget-sec">
+        <header>
+          <h2>Commitments</h2>
+          <p>Budget the agents have committed. Released = reverted.</p>
+        </header>
         <div class="body"><table id="budget"></table></div>
       </section>
-      <section>
-        <h2>Work orders</h2>
+      <section id="orders-sec">
+        <header>
+          <h2>Work orders</h2>
+          <p>Repair jobs opened for committed budget. Cancelled = reverted.</p>
+        </header>
         <div class="body"><table id="orders"></table></div>
       </section>
-      <section>
-        <h2>Inspection requests</h2>
+      <section id="insp-sec">
+        <header>
+          <h2>Inspection requests</h2>
+          <p>Opened when the owner rejects a reading, so the bridge is inspected again.</p>
+        </header>
         <div class="body"><table id="inspections"></table></div>
+      </section>
+      <section id="plan-sec">
+        <header>
+          <h2>Active plan <span class="meta" id="plan-meta"></span></h2>
+          <p>Treatments the planner chose within the budget envelope. Re-solved after a rejection.</p>
+        </header>
+        <div class="body"><table id="plan"></table></div>
       </section>
     </div>
   </main>
+  <div id="caption" aria-live="polite">
+    <div id="cap1">Waiting for the next live event…</div>
+    <div id="cap2"></div>
+    <div id="cap-ctl"><span id="cap-count"></span><button type="button" id="pause">Pause (Space)</button></div>
+  </div>
   <script>
     const params = new URLSearchParams(location.search);
     const sessionInput = document.getElementById("session");
     const feed = document.getElementById("feed");
-    const statusEl = document.getElementById("status");
     const sessEl = document.getElementById("sess-status");
     const actorInput = document.getElementById("actor");
+    const stopMsg = document.getElementById("stop-msg");
     let source = null;
     let timer = null;
+    let view = { status: null, pending: 0, missing: false, rejectedAt: 0 };
 
     sessionInput.value = params.get("session_id") || "";
     actorInput.value = params.get("actor") || "";
 
-    const money = (n) => Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = (n) => "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const sid = () => sessionInput.value.trim();
     const base = () => "/sessions/" + encodeURIComponent(sid());
 
@@ -144,49 +255,231 @@
       return e;
     }
 
+    // Display names only; the server and gate decide what each principal may do.
+    const NAMES = {
+      "agent:intake": "Intake agent", "agent:planner": "Planner agent", "agent:programming": "Budget agent",
+      "agent:workorder": "Work-order agent", "agent:orchestrator": "Orchestrator", "core:revert": "Revert step",
+      "user:owner_a": "Owner A", "user:engineer_b": "Engineer B",
+    };
+    const ACTOR_HINT = {
+      "": "Pick a person before you approve, reject or stop.",
+      "user:owner_a": "Owner: can approve, reject and stop.",
+      "user:engineer_b": "Engineer: cannot approve. Try it to see the gate deny.",
+    };
+    const STATUS = {
+      running: "Running", reverting: "Reverting", abort_requested: "Stop requested", rolling_back: "Rolling back",
+      rolled_back: "Rolled back", completed: "Completed", failed: "Failed",
+    };
+    const DENY = {
+      role: "not permitted for this role", spend_limit: "over the owner's spending limit",
+      envelope: "over the session's budget envelope", jurisdiction: "outside this region",
+      has_commitment: "no budget committed for this bridge", in_approved_plan: "not in the approved plan",
+      has_reason: "a reason is required", session: "the session is not running",
+      actor: "unknown or inactive person or agent", policy: "no active policy allows this action",
+      tool: "unknown action", error: "an error occurred, so the gate denied it",
+    };
+    const plain = (reason) => DENY[String(reason).split(":")[0]] || null;
+
+    // tool -> [allowed wording, denied wording]
+    const ACTS = {
+      propose_condition: ["proposed a new condition reading for", "tried to propose a reading for"],
+      approve_condition: ["approved the reading for", "tried to approve the reading for"],
+      reject_condition: ["rejected the reading for", "tried to reject the reading for"],
+      propose_plan: ["solved a treatment plan", "tried to solve a treatment plan"],
+      commit_budget: ["committed budget for", "tried to commit budget for"],
+      create_work_order: ["opened a work order for", "tried to open a work order for"],
+      request_inspection: ["requested a new inspection of", "tried to request an inspection of"],
+    };
+    const UNDO = {
+      cancel_work_order: "cancelled a work order", release_budget: "released a budget commitment",
+      withdraw_condition: "withdrew a condition reading", supersede_plan: "set aside a plan",
+    };
+
+    function who(id) {
+      const s = el("span");
+      s.append(el("span", NAMES[id] || id || "Someone", "who"));
+      if (NAMES[id]) s.append(" ", el("span", "(" + id + ")", "id"));
+      return s;
+    }
+
+    function sentence(ev, ok) {
+      const p = el("div", null, "line1");
+      const a = ev.args || {};
+      const act = ACTS[ev.tool];
+      p.append(who(ev.actor_id), " ", act ? act[ok ? 0 : 1] : (ok ? "ran " : "tried ") + ev.tool);
+      if (a.asset_id) p.append(" bridge ", el("span", a.asset_id, "bridge"));
+      if (ev.tool === "commit_budget" && a.amount !== undefined) p.append(": ", el("b", money(a.amount)));
+      if (ev.tool === "propose_condition" && a.rating !== undefined) p.append(": rating " + a.rating + " (" + a.year + ")");
+      if (ev.tool === "propose_condition" && /^MOCK/.test(ev.rationale || "")) p.append(el("span", "MOCK", "mock"));
+      return p;
+    }
+
     function feedRow(ev, fresh) {
       const li = el("li");
-      const isDecision = ev.decision === "allow" || ev.decision === "deny";
-      if (ev.decision === "deny") li.classList.add("denied");
       if (fresh) li.classList.add("fresh");
       const t = ev.ts ? new Date(ev.ts).toLocaleTimeString("en-GB") : "";
-      li.append(el("span", t, "t mono"));
-      li.append(isDecision ? el("span", ev.decision.toUpperCase(), "mark " + ev.decision)
-                           : el("span", ev.type || "event", "mark info"));
-      const what = el("span", null, "what");
-      what.append(el("span", ev.tool || ev.type || "", "mono"), el("span", "  " + (ev.actor_id || ""), "who"));
-      li.append(what);
-      if (ev.reason) li.append(el("div", ev.reason, "reason"));
-      if (ev.rationale) li.append(el("div", ev.rationale, "why"));
+      const meta = el("div", "Ledger #" + ev.seq + "  " + t, "meta-line");
+      if (ev.type === "decision") {
+        const ok = ev.decision === "allow";
+        li.classList.add(ok ? "allow" : "deny");
+        li.append(el("span", ok ? "✓ ALLOWED" : "✕ DENIED", "badge " + (ok ? "allow" : "deny")), sentence(ev, ok));
+        if (!ok) {
+          const d = el("div", null, "denywhy");
+          d.append("Why denied: " + (plain(ev.reason) || ev.reason));
+          if (plain(ev.reason)) d.append(el("span", ev.reason, "raw mono"));
+          li.append(d);
+        }
+        if (ev.tool === "reject_condition" && ev.args?.reason) {
+          const w = el("div", null, "why"); w.append(el("b", "Owner's reason: "), ev.args.reason); li.append(w);
+        }
+        if (ev.rationale) { const w = el("div", null, "why"); w.append(el("b", "Stated reason: "), ev.rationale); li.append(w); }
+        li.append(meta);
+        return li;
+      }
+      if (ev.type === "executed") {
+        li.classList.add("quiet");
+        const p = el("div", "Carried out" + (ev.after?.produced ? ", record #" + shortKey(ev.after.produced) : ""), "line1");
+        li.append(el("span", "done", "badge sys"), p);
+        return li;
+      }
+      if (ev.type === "compensated") {
+        li.classList.add("undo");
+        const p = el("div", null, "line1");
+        p.append(who(ev.actor_id), " " + (UNDO[ev.tool] || ("ran " + ev.tool)));
+        if (ev.args?.produced) p.append(" ", el("span", "#" + shortKey(ev.args.produced), "id"));
+        li.append(el("span", "↺ REVERTED", "badge undo"), p, meta);
+        return li;
+      }
+      li.classList.add("system");
+      const text = {
+        session_started: "Session started. The agents begin work.",
+        abort_observed: "Stop received (" + (ev.reason || "") + "). Rolling back everything committed.",
+        session_ended: "Session ended: " + (STATUS[ev.after?.status] || ev.after?.status || "unknown") + ".",
+        failed: "Action failed after it was allowed: " + (ev.reason || ""),
+      }[ev.type] || (ev.type + (ev.reason ? ": " + ev.reason : ""));
+      li.append(el("span", ev.type === "failed" ? "failed" : "system", "badge sys"), el("div", text, "line1"), meta);
       return li;
     }
 
     function connect() {
-      if (!sid()) { statusEl.textContent = "set session_id"; return; }
+      if (!sid()) return;
       if (source) source.close();
       feed.replaceChildren();
-      statusEl.textContent = "listening…";
       source = new EventSource("/events?session_id=" + encodeURIComponent(sid()));
       source.onopen = () => { feed.replaceChildren(); };  // the server replays the session on each connect
+      const opened = Date.now();
       source.onmessage = (ev) => {
         const doc = JSON.parse(ev.data);
-        feed.prepend(feedRow(doc, true));
+        // present=1: live events (stamped after this page connected) wait in a queue; the replay shows at once.
+        if (PRESENT && Date.parse(doc.ts) >= opened - 1000) { queue.push(doc); pump(); return; }
+        show(doc);
+      };
+      source.onerror = () => { document.getElementById("feed-meta").textContent = "reconnecting…"; };
+      renderFeedEmpty();
+    }
+
+    function show(doc) {
+        const row = feedRow(doc, true);
+        feed.prepend(row);
+        document.getElementById("feed-meta").textContent = doc.seq + " ledger entries";
         loadState();
         if (doc.tool?.endsWith("_condition")) loadConditions();
-      };
-      source.onerror = () => { statusEl.textContent = "stream error / reconnecting"; };
+        return row;
+    }
+
+    const PRESENT = params.get("present") === "1";
+    const HOLD = 1000 * (Number(params.get("hold")) || 5);
+    const queue = [];
+    let holding = false, paused = false, shown = 0;
+    const PANEL = {
+      propose_condition: "cond-sec", approve_condition: "cond-sec", reject_condition: "cond-sec",
+      withdraw_condition: "cond-sec", propose_plan: "plan-sec", supersede_plan: "plan-sec",
+      commit_budget: "budget-sec", release_budget: "budget-sec", create_work_order: "orders-sec",
+      cancel_work_order: "orders-sec", request_inspection: "insp-sec",
+    };
+    const ASKS = {
+      propose_condition: "asked to propose a condition reading", approve_condition: "asked to approve the reading",
+      reject_condition: "asked to reject the reading", propose_plan: "asked to solve a treatment plan",
+      commit_budget: "asked to commit", create_work_order: "asked to open a work order",
+      request_inspection: "asked to request a new inspection",
+    };
+    function caption(ev) {
+      const a = ev.args || {}, name = NAMES[ev.actor_id] || ev.actor_id;
+      if (ev.type === "decision") {
+        let s = name + " " + (ASKS[ev.tool] || "asked to run " + ev.tool);
+        if (ev.tool === "commit_budget") s += " " + money(a.amount);
+        if (ev.tool === "propose_condition") s += " of " + a.rating + " (" + a.year + ")";
+        if (a.asset_id) s += " for bridge " + a.asset_id;
+        const ok = ev.decision === "allow";
+        return [s + ". Gate: " + (ok ? "ALLOWED." : "DENIED (" + String(ev.reason).split(":")[0] + ")."),
+                ok ? (ev.tool === "reject_condition" ? a.reason : ev.rationale) || "" : ev.reason];
+      }
+      if (ev.type === "compensated") return [name + " " + (UNDO[ev.tool] || "ran " + ev.tool) + " #" + shortKey(ev.args?.produced) + ".", "Ledger #" + ev.seq + ", undo of #" + shortKey(ev.args?.idempotency_key)];
+      if (ev.type === "abort_observed") return ["Stop received. Rolling back everything committed.", ev.reason || ""];
+      if (ev.type === "session_ended") return ["Session ended: " + (STATUS[ev.after?.status] || ev.after?.status) + ".", ""];
+      if (ev.type === "session_started") return ["Session started.", ""];
+      if (ev.type === "failed") return ["Action failed after it was allowed: " + ev.tool + ".", ev.reason || ""];
+      return [ev.type, ""];
+    }
+    function pump() {
+      document.getElementById("cap-count").textContent = queue.length + " queued" + (paused ? ", paused" : "");
+      if (holding || paused || !queue.length) return;
+      const ev = queue.shift();
+      const row = show(ev);
+      loadConditions();
+      if (ev.type === "executed") { pump(); return; }  // the result of the step just held; no hold of its own
+      shown += 1;
+      document.querySelectorAll(".spot").forEach((n) => n.classList.remove("spot"));
+      const target = document.getElementById(["abort_observed", "session_ended"].includes(ev.type) ? "stop-box" : PANEL[ev.tool]);
+      row.classList.add("spot");
+      if (target) { target.classList.add("spot"); target.scrollIntoView({ block: "nearest" }); }
+      row.scrollIntoView({ block: "nearest" });
+      const [l1, l2] = caption(ev);
+      document.getElementById("cap1").textContent = "Step " + shown + ". " + l1;
+      document.getElementById("cap2").textContent = l2;
+      document.getElementById("cap-count").textContent = "step " + shown + ", " + queue.length + " queued";
+      holding = true;
+      setTimeout(() => { holding = false; pump(); }, HOLD);
+    }
+    function togglePause() {
+      paused = !paused;
+      document.getElementById("pause").textContent = paused ? "Resume (Space)" : "Pause (Space)";
+      pump();
+    }
+    if (PRESENT) {
+      document.body.classList.add("present");
+      document.getElementById("pause").addEventListener("click", togglePause);
+      document.addEventListener("keydown", (e) => {
+        if (e.code === "Space" && !["INPUT", "SELECT", "BUTTON"].includes(document.activeElement.tagName)) { e.preventDefault(); togglePause(); }
+      });
+    }
+
+    function renderFeedEmpty() {
+      if (!feed.children.length) feed.append(el("li", sid() ? "Waiting for the first event…" : "No session yet. Start one to see the agents work here.", "empty"));
+    }
+
+    function detail(out, status) {
+      const d = out && out.detail;
+      if (Array.isArray(d)) {
+        if (d.some((x) => (x.loc || []).includes("reason"))) return "Type a reason before rejecting.";
+        if (d.some((x) => (x.loc || []).includes("actor_id") || (x.loc || []).includes("aborted_by"))) return "Choose who you are acting as first.";
+        return d.map((x) => x.msg).join("; ");
+      }
+      if (typeof d === "string") return (plain(d) ? "Denied: " + plain(d) + " (" + d + ")" : d);
+      return "Refused (" + status + ")";
     }
 
     const conditionsEl = document.getElementById("conditions");
-    async function decide(action, body) {
+    async function decide(action, body, msgEl) {
+      msgEl.textContent = "";
       const r = await fetch(base() + "/conditions/" + action, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actor_id: actorInput.value, ...body }),
       });
       const out = await r.json();
-      statusEl.textContent = r.ok ? (action + " ok: " + body.condition_id)
-        : (action + " refused (" + r.status + "): " + JSON.stringify(out.detail));
+      if (!r.ok) msgEl.textContent = detail(out, r.status);
+      else if (action === "reject") view.rejectedAt = Date.now();
       loadConditions();
       loadState();
     }
@@ -194,97 +487,184 @@
     async function loadConditions() {
       if (!sid()) return;
       const r = await fetch(base() + "/conditions");
-      if (!r.ok) { statusEl.textContent = "conditions failed: " + r.status; return; }
+      if (!r.ok) return;
       const rows = await r.json();
+      view.pending = rows.length;
+      guide();
       const sig = rows.map((c) => c._id).join("|");
-      if (sig === conditionsEl.dataset.sig) return;  // keep a half-typed reject reason through polling
+      if (sig === conditionsEl.dataset.sig) return;  // keep a half-typed reason and any error through polling
       conditionsEl.dataset.sig = sig;
       conditionsEl.replaceChildren();
-      if (!rows.length) conditionsEl.append(el("li", "None pending.", "empty"));
+      if (!rows.length) conditionsEl.append(el("li", "Nothing waiting for you. New readings appear here.", "empty"));
       for (const c of rows) {
         const li = el("li");
-        const label = el("span", c.asset_id + " · " + c.year + " · rating " + c.rating, "asset");
-        const approve = el("button", "Approve");
+        const label = el("div", null, "asset");
+        label.append("Bridge " + c.asset_id + ": rating " + c.rating + " in " + c.year);
+        if (String(c._id).startsWith(sid() + ":")) label.append(el("span", "MOCK", "mock"));
+        const msg = el("div", null, "err");
+        msg.setAttribute("role", "alert");
+        const approve = el("button", "Approve reading", "approve");
         approve.type = "button";
-        approve.addEventListener("click", () => decide("approve", { condition_id: c._id }));
+        approve.addEventListener("click", () => decide("approve", { condition_id: c._id }, msg));
+        const lab = el("label", "Reason for rejecting (required)");
         const reason = el("input");
-        reason.placeholder = "reason";
-        reason.setAttribute("aria-label", "reject reason for " + c.asset_id);
-        const reject = el("button", "Reject");
+        reason.placeholder = "e.g. reading disputed, re-inspect";
+        lab.append(reason);
+        const reject = el("button", "Reject reading", "reject");
         reject.type = "button";
-        reject.addEventListener("click", () => decide("reject", { condition_id: c._id, reason: reason.value }));
-        li.append(label, approve, reason, reject);
+        reject.addEventListener("click", () => decide("reject", { condition_id: c._id, reason: reason.value }, msg));
+        const controls = el("div", null, "controls");
+        controls.append(approve, lab, reject);
+        li.append(label, controls, msg);
         conditionsEl.append(li);
       }
     }
 
+    const seen = {};  // table id -> {row key -> status}, to highlight what changed
     function fill(table, head, rows, empty, foot) {
+      const prev = seen[table.id] || {};
+      const first = !(table.id in seen);
+      seen[table.id] = {};
       table.replaceChildren();
       if (!rows.length) { const tr = el("tr"); const td = el("td", empty, "empty"); td.colSpan = head.length; tr.append(td); table.append(tr); return; }
       const hr = el("tr");
-      head.forEach((h, i) => hr.append(el("th", h, h.endsWith("$") ? "num" : "")));
-      hr.querySelectorAll("th").forEach((th) => { th.textContent = th.textContent.replace("$", ""); });
+      head.forEach((h) => hr.append(el("th", h.replace("$", ""), h.endsWith("$") ? "num" : "")));
       const th = el("thead");
       th.append(hr);
       table.append(th);
       const tb = el("tbody");
-      for (const { cells, gone } of rows) {
-        const tr = el("tr", null, gone ? "gone" : "");
-        cells.forEach((c, i) => tr.append(el("td", c, head[i].endsWith("$") ? "num" : "")));
+      for (const { key, cells, gone, state } of rows) {
+        seen[table.id][key] = state;
+        const changed = !first && prev[key] !== state;
+        const tr = el("tr", null, (gone ? "gone" : "live") + (changed ? " changed" : ""));
+        cells.forEach((c, i) => tr.append(el("td", c, head[i].endsWith("$") ? "num" : (i === cells.length - 1 && state ? "st" : ""))));
         tb.append(tr);
       }
       table.append(tb);
       if (foot) {
         const tf = el("tfoot"), tr = el("tr");
-        foot.forEach((c, i) => { const td = el("td", c.text, (head[i].endsWith("$") ? "num " : "") + (c.cls || "")); tr.append(td); });
+        foot.forEach((c, i) => tr.append(el("td", c.text, (head[i].endsWith("$") ? "num " : "") + (c.cls || ""))));
         tf.append(tr); table.append(tf);
       }
     }
 
     const shortKey = (k) => String(k).split(":").pop();
+    const BUDGET = { committed: "Committed", released: "Released (reverted)" };
+    const ORDER = { draft: "Draft", released: "Issued", cancelled: "Cancelled (reverted)" };
+    let firstPlan = null, firstSeq = null;
 
     async function loadState() {
       if (!sid()) return;
       const r = await fetch(base() + "/state");
-      if (!r.ok) { sessEl.textContent = "not found"; sessEl.dataset.s = ""; return; }
+      if (!r.ok) { view.missing = true; sessEl.textContent = "Not found"; sessEl.dataset.s = ""; guide(); return; }
+      view.missing = false;
       const s = await r.json();
-      sessEl.textContent = s.session.status;
+      view.status = s.session.status;
+      sessEl.textContent = STATUS[s.session.status] || s.session.status;
       sessEl.dataset.s = s.session.status;
       const env = s.session.budget_envelope;
       const plan = s.plan;
-      document.getElementById("plan-meta").textContent = plan ? ("seq " + plan.seq + " · " + plan.status) : "";
-      fill(document.getElementById("plan"), ["Asset", "Treatment", "Cost$"],
-        plan ? plan.lines.map((l) => ({ cells: [l.asset_id, l.treatment, money(l.cost)] })) : [],
-        "No plan yet.",
-        plan && [{ text: "Total of " + money(env) }, { text: "" },
+      if (plan && firstPlan === null) { firstPlan = plan._id; firstSeq = plan.seq; }
+      const meta = document.getElementById("plan-meta");
+      meta.replaceChildren();
+      if (plan) {
+        if (plan._id !== firstPlan) meta.append(el("span", "Re-solved (was plan #" + firstSeq + ")", "resolved"));
+        meta.append("Plan #" + plan.seq + ": " + plan.lines.length + " lines, " + money(plan.total_cost) + " of " + money(env));
+      }
+      fill(document.getElementById("plan"), ["Bridge", "Treatment", "Cost$"],
+        plan ? plan.lines.map((l) => ({ key: l.asset_id, cells: [l.asset_id, l.treatment.replace(/_/g, " "), money(l.cost)] })) : [],
+        "No plan yet. The planner solves one after the owner approves a reading.",
+        plan && [{ text: "Total, envelope " + money(env) }, { text: "" },
                  { text: money(plan.total_cost), cls: plan.total_cost > env ? "over" : "" }]);
-      fill(document.getElementById("budget"), ["Asset", "Amount$", "Status"],
-        s.budget.map((b) => ({ cells: [b.asset_id, money(b.amount), b.status.toUpperCase()], gone: b.status !== "committed" })),
-        "No commitments.");
-      fill(document.getElementById("orders"), ["Order", "Asset", "Status"],
-        s.work_orders.map((w) => ({ cells: ["#" + shortKey(w._id), w.asset_id, w.status.toUpperCase()], gone: w.status === "cancelled" })),
-        "No work orders.");
-      fill(document.getElementById("inspections"), ["Request", "Asset", "Condition"],
-        s.inspections.map((i) => ({ cells: ["#" + shortKey(i._id), i.asset_id, i.condition_id] })),
-        "No inspection requests.");
+      fill(document.getElementById("budget"), ["Bridge", "Amount$", "Status"],
+        s.budget.map((b) => ({ key: b._id, state: b.status, cells: [b.asset_id, money(b.amount), BUDGET[b.status] || b.status], gone: b.status !== "committed" })),
+        "No budget committed yet.");
+      fill(document.getElementById("orders"), ["Order", "Bridge", "Status"],
+        s.work_orders.map((w) => ({ key: w._id, state: w.status, cells: ["#" + shortKey(w._id), w.asset_id, ORDER[w.status] || w.status], gone: w.status === "cancelled" })),
+        "No work orders yet.");
+      fill(document.getElementById("inspections"), ["Request", "Bridge", "Rejected reading"],
+        s.inspections.map((i) => ({ key: i._id, state: "open", cells: ["#" + shortKey(i._id), i.asset_id, "#" + shortKey(i.condition_id)] })),
+        "None. A rejected reading opens one.");
+      guide();
+    }
+
+    // The next human action, from live state only.
+    function guide() {
+      const text = document.getElementById("next-text"), sub = document.getElementById("next-sub");
+      const box = document.getElementById("next");
+      const condSec = document.getElementById("cond-sec");
+      document.getElementById("actor-hint").textContent = ACTOR_HINT[actorInput.value] || "";
+      sub.replaceChildren();
+      let tone = "info", attn = false, main, rest = "";
+      const st = view.status;
+      if (!sid()) {
+        main = "Start a session";
+        sub.append("In a terminal run ", el("code", "uv run python run_demo.py --reset"),
+                   ". It prints a link: open it, or paste the session id above.");
+      } else if (view.missing) {
+        main = "Session not found";
+        rest = "Check the session id, or start a new run; another --reset may have replaced it.";
+      } else if (st === "reverting" || (st === "running" && Date.now() - view.rejectedAt < 3000)) {
+        tone = "done";
+        main = "Reverting only what depended on the rejected reading…";
+        rest = "Watch Commitments and Work orders: that bridge's lines turn to reverted, an inspection request opens, and the plan is re-solved.";
+      } else if (st === "abort_requested" || st === "rolling_back") {
+        tone = "done";
+        main = "Stopping: rolling back everything this session committed…";
+      } else if (st === "rolled_back") {
+        tone = "done";
+        main = "Session rolled back. Nothing is committed.";
+        rest = "Every step is undone and recorded in the Activity ledger. Start a new run to go again.";
+      } else if (st === "failed") {
+        tone = "done";
+        main = "Session failed: an undo did not complete.";
+        rest = "A person decides what to do next. The Activity feed shows which step failed.";
+      } else if (st === "completed") {
+        tone = "done";
+        main = "Session completed.";
+      } else if (st === "running" && view.pending > 0) {
+        tone = "act"; attn = true;
+        main = "Approve or reject the pending reading";
+        rest = actorInput.value ? "Use the buttons in Pending readings, on the right." : "First choose who you are under Acting as, then use Pending readings on the right.";
+      } else if (st === "running") {
+        main = "Agents are working. Press Stop to roll everything back.";
+        rest = "Watch the Activity feed. You will be asked when a reading needs a decision.";
+      } else {
+        main = "Loading session…";
+      }
+      text.textContent = main;
+      if (rest) sub.append(rest);
+      box.dataset.tone = tone;
+      condSec.classList.toggle("attn", attn);
     }
 
     function start() {
+      firstPlan = null;
+      for (const k in seen) delete seen[k];
+      delete conditionsEl.dataset.sig;
       connect(); loadConditions(); loadState();
       clearInterval(timer);
-      timer = setInterval(() => { loadState(); loadConditions(); }, 2000);
+      if (!PRESENT) timer = setInterval(() => { loadState(); loadConditions(); }, 2000);
     }
     sessionInput.addEventListener("change", start);
+    actorInput.addEventListener("change", guide);
+    guide();
+    renderFeedEmpty();
     if (sessionInput.value) start();
+    else {
+      conditionsEl.append(el("li", "Readings that need your decision appear here.", "empty"));
+      for (const id of ["budget", "orders", "inspections", "plan"]) fill(document.getElementById(id), [""], [], "Fills in once a session runs.");
+    }
 
     document.getElementById("stop").addEventListener("click", async () => {
-      if (!sid()) return;
+      stopMsg.textContent = "";
+      if (!sid()) { stopMsg.textContent = "No session to stop."; return; }
       const r = await fetch(base() + "/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ aborted_by: actorInput.value }),
       });
-      statusEl.textContent = r.ok ? "abort_requested" : ("stop failed: " + r.status);
+      stopMsg.textContent = r.ok ? "Stop sent. Rolling back." : detail(await r.json(), r.status);
       loadState();
     });
   </script>
