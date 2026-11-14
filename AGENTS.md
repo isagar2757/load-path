@@ -28,3 +28,24 @@ Applies to Claude Code, Cursor and any other agent. `CLAUDE.md` imports this fil
 - Project data layer is the sandbox cluster only. No personal Atlas, no local MongoDB.
 - Demo and video show only what was built during the event.
 - Check ideas against the anti-project list: no basic RAG, no Streamlit, no dashboard as the main feature.
+
+## Event build: constraints
+Spec, plan and formulas: [spec](docs/superpowers/specs/2026-11-13-audited-agent-design.md) · [plan](docs/superpowers/plans/2026-11-14-event-build.md) · [formulas](docs/formulas.md).
+- Database `capital`; tests use `capital_test` and drop it. Get a handle only through `db.get_db()`.
+- Nothing from an employer, no vendor product names, no safety or engineering judgment.
+- The page is a control surface (feed, approve/reject, stop). No chart-only views.
+- Code does all arithmetic. The LLM picks from listed options and writes the rationale.
+- Treatment costs are assumptions; the README says so.
+- Every tool call, agent or human, goes through `guarded_call`. Nothing else writes to a domain collection after seeding.
+- Tests that need Atlas skip when `MONGODB_URI` is unset (CI has none).
+
+## Event build: lanes and ownership
+| Path | Owner |
+|---|---|
+| `contracts.py`, `db.py`, `pyproject.toml`, `.env.example`, `LICENSE`, `README.md`, `AGENTS.md` | both (README sections: whoever built the feature) |
+| `core/` (gate, ledger, revert, orchestrator, agents), `tests/core/`, `run_demo.py` | Sagar (Arad reviews `run_demo.py`) |
+| `setup_db.py`, `systems/`, `engine/`, `web/`, `tests/systems/`, `tests/engine/` | Arad |
+
+- Never edit a file you do not own; ask its owner.
+- `contracts.py` is locked after Stage 0. A change needs both to agree out loud, then one commit by whoever is free.
+- Merge only at a stage gate (plan, section Stage gate): Sagar's PR first, then Arad rebases.

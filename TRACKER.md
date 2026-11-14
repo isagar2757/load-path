@@ -6,7 +6,7 @@ Status: `todo` · `active` · `blocked(<on what>)` · `done(<sha>)`.
 ## Now
 | ID | Item | Phase | Status | Next action | Links |
 |---|---|---|---|---|---|
-| S0 | Stage 0: contracts, db.py, AGENTS lanes, setup_db.py | Build | active | Sagar: LICENSE, pyproject, contracts.py, db.py, AGENTS lanes. Arad: setup_db.py | [spec](docs/superpowers/specs/2026-11-13-audited-agent-design.md) · [plan](docs/superpowers/plans/2026-11-14-event-build.md) · [formulas](docs/formulas.md) |
+| S0 | Stage 0: contracts, db.py, AGENTS lanes, setup_db.py | Verify | active | Sagar's part on `docs/s0-import-spec` (12 tests pass). Push + PR; Arad: `setup_db.py` against `contracts.py`, then code-121 check and venue IP on access list | [spec](docs/superpowers/specs/2026-11-13-audited-agent-design.md) · [plan](docs/superpowers/plans/2026-11-14-event-build.md) · [formulas](docs/formulas.md) |
 
 ## Ground truth
 - 2026-11-14 — Shared log exists on the Atlas Sandbox: db `adlc`, collection `log`, indexes `item_ts`, `author_ts` (verified by insert and `find`).
