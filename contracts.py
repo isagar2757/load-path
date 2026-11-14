@@ -145,6 +145,22 @@ class SagaEntry(_Strict):
     state: SagaState
 
 
+# Domain: assets (task A4). One Ontario bridge; `_id` is "ID (SITE N°)".
+class Asset(_Strict):
+    id: str = Field(alias="_id")
+    region: str
+    county: str                  # COUNTY
+    year_built: int              # YEAR BUILT
+    deck_area: float             # DECK / CULVERTS LENGTH (m) x WIDTH TOTAL (m), m2
+
+
+class ConditionRecord(_Strict):
+    asset_id: str
+    rating: float                # CURRENT BCI, 0-100
+    year: int                    # year of LAST INSPECTION DATE
+    status: ConditionStatus
+
+
 # Return shapes
 class ToolResult(_Strict):
     allowed: bool
