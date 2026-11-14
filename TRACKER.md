@@ -12,7 +12,7 @@ IDs: `S*` Sagar (Claude Code) · `A*` Arad (Cursor) · `G*` stage gate (both) ·
 | S0 | Sagar | LICENSE, pyproject, `contracts.py`, `db.py`, lanes in AGENTS.md | Verify | active | — | PR #3: CI green; 12 passed. Merge |
 | RELAY | Sagar | Relay loop: `--to`, `inbox`, `review`/`gate` events, item from branch, rules | Verify | active | S0 | `setup.sh` all ok; arad inbox shows a `--to arad` handoff |
 | A0 | Arad | `setup_db.py`: validators, indexes (`contracts.INDEXES`), seed 2 humans, agents, one active policy per Stage 2 tool | Build | todo | S0 | runs twice without error; `principals` insert missing `kind` → code 121 |
-| S1 | Sagar | `core/ledger.py` (`append`, `verify`), `core/gate.py` (`register_tool`, `guarded_call`, `role` check) | Build | todo | S0 | `uv run pytest tests/core -q`: chain, edit flagged, deny without policy, decision before write |
+| S1 | Sagar | `core/ledger.py` (`append`, `verify`), `core/gate.py` (`register_tool`, `guarded_call`, `role` check) | Verify | active | S0 | `uv run pytest tests/core -q`: chain, edit flagged, deny without policy, decision before write |
 | A1 | Arad | `web/server.py` SSE `/events`, `POST /sessions/{id}/stop`; `web/index.html` feed | Build | todo | S0 | event inserted by hand appears on the page < 2 s |
 
 ## Ground truth
@@ -56,6 +56,8 @@ IDs: `S*` Sagar (Claude Code) · `A*` Arad (Cursor) · `G*` stage gate (both) ·
 - ADLC-1 shared log, convention, Arad onboarding prompt (c1be56c)
 
 ## Log
+- 2026-11-14 — S1: `core/ledger.py`, `core/gate.py`, `tests/core/` on `feat/s1-ledger-gate`. `uv run pytest -q`: 24 passed (Atlas); without `MONGODB_URI`: 11 passed, 13 skipped. `guarded_call` and ledger functions take an optional `db=` keyword (tests pass `capital_test`); default is `db.get_db()`. Checks other than `role` deny as `not implemented` until S2.
+- 2026-11-14 — S1 `/code-review` (medium): fixed post-execution ledger failure escaping `guarded_call`, `policy.roles` always enforced (beyond formulas §1: role binds even if not listed in `checks`), guarded `audit_head` update, `verify` flags tail truncation via `audit_head`, ledger stamps `ts` itself, driver error text kept out of `reason`. Deferred: unserialisable args deny without a ledger record; deny events written for unknown or ended sessions; `append` relies on the unique index from `setup_db.py` (A0). `uv run pytest -q`: 28 passed.
 - 2026-11-14 — Tracker and shared ADLC docs added on `main` by agreement as a one-off; later work goes through branches.
 - 2026-11-14 — ADLC-2: hooks (pre-commit, commit-msg, post-commit Mongo log, pre-push), `scripts/check.sh` shared with CI, `scripts/adlc_log.py`, `scripts/setup.sh`, Claude skill + SessionStart hook, Cursor rule, CI workflow, PR template. Local run: `setup.sh` all ok.
 - 2026-11-14 — RELAY: relay loop added; `ADLC_AUTHOR` required (`sagar`/`arad`); stages broken into S*/A*/G*/F* rows.
