@@ -217,6 +217,7 @@ def _policies(now: datetime) -> list[dict]:
     specs = [
         ("commit_budget", ["programming"], ["role", "spend_limit", "envelope", "jurisdiction", "in_approved_plan"]),
         ("create_work_order", ["workorder"], ["role", "has_commitment"]),
+        ("propose_condition", ["intake"], ["role", "jurisdiction"]),
         ("approve_condition", ["owner"], ["role", "jurisdiction"]),
         ("reject_condition", ["owner"], ["role", "jurisdiction", "has_reason"]),
         ("request_inspection", ["orchestrator"], ["role"]),

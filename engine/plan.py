@@ -19,11 +19,14 @@ _MILP_INFEASIBLE = 2  # scipy.optimize.milp status code
 
 
 def candidates(assets: list[dict], conditions: list[dict]) -> list[PlanLine]:
-    """One candidate per (condition record, treatment): cost = rate x deck area, benefit = gain x deck area."""
+    """One candidate per (condition record, treatment): cost = rate x deck area, benefit = gain x deck area.
+
+    Both are rounded to cents, so a plan line amount compares equal when a commitment repeats it.
+    """
     area = {a["_id"]: a["deck_area"] for a in assets}
     return [
-        PlanLine(asset_id=c["asset_id"], treatment=name, cost=rate * area[c["asset_id"]],
-                 benefit=min(gain, RATING_MAX - c["rating"]) * area[c["asset_id"]])
+        PlanLine(asset_id=c["asset_id"], treatment=name, cost=round(rate * area[c["asset_id"]], 2),
+                 benefit=round(min(gain, RATING_MAX - c["rating"]) * area[c["asset_id"]], 2))
         for c in conditions for name, (gain, rate) in TREATMENTS.items()
     ]
 
