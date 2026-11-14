@@ -26,9 +26,14 @@ def propose_plan(db, args: dict) -> dict:
     sid, seq = _session_and_seq(key)
     session = db.sessions.find_one({"_id": ObjectId(sid)})
     assets = list(db.assets.find({"region": session["region"]}, {"deck_area": 1}))
-    conditions = list(db.condition_records.find(
-        {"asset_id": {"$in": [a["_id"] for a in assets]}, "status": APPROVED}, {"asset_id": 1, "rating": 1}))
-    cands = engine.candidates(assets, conditions)
+    # formulas section 4, set X: a bridge is a candidate only when its newest condition record is approved,
+    # so a pending or rejected reading keeps it out of the plan.
+    newest: dict = {}
+    for rec in db.condition_records.find({"asset_id": {"$in": [a["_id"] for a in assets]}},
+                                         {"asset_id": 1, "rating": 1, "year": 1, "status": 1}).sort(
+                                             [("year", 1), ("_id", 1)]):
+        newest[rec["asset_id"]] = rec
+    cands = engine.candidates(assets, [rec for rec in newest.values() if rec["status"] == APPROVED])
     committed = {(b["asset_id"], b["amount"])
                  for b in db.budget_ledger.find({"session_id": sid, "status": "committed"})}
     fixed = [(c.asset_id, c.treatment) for c in cands if (c.asset_id, c.cost) in committed]
