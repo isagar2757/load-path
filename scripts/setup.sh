@@ -9,7 +9,10 @@ git config core.hooksPath .githooks && chmod +x .githooks/* scripts/*.sh scripts
 if [[ ! -e .env ]]; then cp .env.example .env; bad ".env created from template: paste MONGODB_URI from Sagar, then re-run"; fi
 if grep -q '^MONGODB_URI=mongodb.*<' .env 2>/dev/null || ! grep -q '^MONGODB_URI=.\+' .env 2>/dev/null; then
   bad "MONGODB_URI not set in .env"
+elif ! grep -qE '^ADLC_AUTHOR=(sagar|arad)$' .env; then
+  bad "ADLC_AUTHOR must be sagar or arad in .env (routes the relay inbox)"
 else
+  uv sync --quiet && ok "uv sync" || bad "uv sync failed"
   uv run --quiet scripts/adlc_log.py check 2>&1 | tail -1 | grep -q "atlas ok" && ok "atlas ok; adlc.log writable" \
     || bad "atlas check failed (IP on access list? string correct?): uv run scripts/adlc_log.py check"
 fi
