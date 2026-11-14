@@ -5,7 +5,8 @@ Working log for the two of us and our agents. Process tooling: not part of the s
 
 - Location: hackathon Atlas Sandbox, database `adlc`, collection `log`. Connection string only in `.env` (gitignored).
 - Indexes: `{item, ts}`, `{author, ts}`. No schema validator; follow the table.
-- Write: MongoDB MCP `insert-many` on `adlc.log`. Read: `find`, sort `ts` descending.
+- Write: `uv run scripts/adlc_log.py add ...`. Read: `uv run scripts/adlc_log.py tail`. Commits are logged by `.githooks/post-commit`; failures land in `.git/adlc-log.err`.
+- Claude Code prints the latest 10 events at session start (`.claude/settings.json`). Skill: `adlc-log`. Cursor rule: `.cursor/rules/adlc.mdc`.
 - One document per event. Never store secrets or connection strings.
 
 | Field | Value |
@@ -13,7 +14,7 @@ Working log for the two of us and our agents. Process tooling: not part of the s
 | `ts` | Date (UTC) |
 | `author` | `sagar` or `arad` |
 | `actor` | `human` or the agent name |
-| `tool` | `claude-code` or `cursor` |
+| `tool` | `claude-code`, `cursor`, `git` (post-commit hook) or `human` |
 | `item` | tracker or plan task ID |
 | `phase` | `Spec` `Plan` `Build` `Verify` `Ship` |
 | `event` | `task_start` `task_done` `decision` `blocker` `handoff` `test_run` `commit` `question` |

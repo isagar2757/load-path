@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Append a commit event to the shared Mongo log. Never blocks or fails a commit.
+root=$(git rev-parse --show-toplevel)
+( cd "$root" && uv run --quiet scripts/adlc_log.py commit-hook >/dev/null 2>>"$(git rev-parse --git-dir)/adlc-log.err" ) &
+exit 0

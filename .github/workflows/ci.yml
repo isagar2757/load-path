@@ -1,0 +1,35 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Commit messages (Conventional Commits)
+        if: github.event_name == 'pull_request'
+        run: |
+          re='^(feat|fix|docs|refactor|test|chore|build|ci|perf|revert)(\([a-z0-9._/-]+\))?!?: .{1,72}$'
+          bad=0
+          for sha in $(git rev-list --no-merges "origin/${{ github.base_ref }}..HEAD"); do
+            s=$(git log -1 --format=%s "$sha")
+            [[ "$s" =~ $re ]] || { echo "bad subject: $sha $s"; bad=1; }
+          done
+          exit $bad
+      - name: Secrets, docs sync, filler
+        if: github.event_name == 'pull_request'
+        run: scripts/check.sh range "origin/${{ github.base_ref }}...HEAD"
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: pytest (when tests exist)
+        run: |
+          if [ -d tests ]; then uv run --python 3.13 pytest -q; else echo "no tests yet"; fi

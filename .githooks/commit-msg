@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Conventional Commits: type(scope)?: summary
+first=$(head -n1 "$1")
+re='^(feat|fix|docs|refactor|test|chore|build|ci|perf|revert)(\([a-z0-9._/-]+\))?!?: .{1,72}$'
+case "$first" in Merge\ *|Revert\ *) exit 0;; esac
+if ! [[ "$first" =~ $re ]]; then
+  echo "commit-msg: use 'type(scope): imperative summary' (feat fix docs refactor test chore build ci perf revert), max 72 chars." >&2
+  exit 1
+fi

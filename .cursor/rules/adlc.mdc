@@ -1,0 +1,8 @@
+---
+description: Shared ADLC log and workflow rules
+alwaysApply: true
+---
+Follow AGENTS.md. At the start of a task, run `uv run scripts/adlc_log.py tail -n 10` and read it.
+Log events with `ADLC_TOOL=cursor uv run scripts/adlc_log.py add --item <ID> --phase <P> --event <E> --summary "<one line>"`
+for task_start, task_done (with --evidence), decision, blocker, handoff. Commits are logged by the post-commit hook.
+Never write secrets. Edit only files in your lane.
