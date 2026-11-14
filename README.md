@@ -1,3 +1,5 @@
+<img src="docs/assets/logo.svg" alt="load-path mark" width="96">
+
 # Load Path
 
 > In a bridge, the load path is the route a load takes down to the ground. In ours, it is the route every agent action takes through the gate, the ledger and, if rejected, the revert.
@@ -52,6 +54,21 @@ uv run pytest -q
 - `systems.assets` reads `bridge_condition_open_data_2020_en.csv` from `~/hackathon-data/ontario-bridge-conditions/`, or from the path in `ONTARIO_BRIDGES_PATH`. Download the file from the source under Data and attribution.
 - `run_demo.py` flags: `--reset` clears the run collections and re-runs `setup_db`; `--auto` performs the approve, reject and stop actions without the page; `--llm` turns on LLM mode; `--wait SECONDS` (default 8) is the pause to open the page; `--step SECONDS` (default 1.5) is the pause between steps. It needs at least three assets in region `r1`. `--reset` deletes every session in the database it runs on: set `CAPITAL_DB=capital_<name>` in `.env` to use your own database, then run `setup_db.py` and `systems.assets` for it. Stop at any point ends the run with a rollback.
 - Tests that need Atlas skip when `MONGODB_URI` is unset. Each test uses its own `capital_test_<suffix>` database and drops it.
+
+## Demo
+
+3-minute live demo. Arad drives the page, Sagar speaks. Values come from a real run: `main` c56d97b, `run_demo.py --reset --auto --wait 0 --step 0` on database `capital_sagar`, which ended `demo ok`. Live, run `--reset` without `--auto` and click through; `--auto` is the fallback. Cut the 0:00 beat first if time runs short.
+
+| Time | On screen (seq from the run) | Line |
+|---|---|---|
+| 0:00 | `adlc_log.py tail -n 12`; a non-conventional commit rejected by the hook | "We built this the way our agents run: every step logged, every commit checked before it lands." |
+| 0:15 | 198 Highway 401 bridges, envelope 250,000,000. 1: Intake proposes a MOCK reading for 22X-0161/B1 (72.7, published 77.7 in 2020). 2: `user:owner_a` approves | "Agencies can't fund every bridge. Every action, agent or person, goes through one gate in Atlas before it runs." |
+| 0:40 | 3: Planner solves: 190 lines, 249,979,760 of 250,000,000. 4: commit 1,618,200 for B1. 5: work order for B1 | "Code does the arithmetic. Each agent does one job, and each step names a person and a policy version." |
+| 1:05 | 6: off-plan commit of 12,345: DENY `in_approved_plan`. 7: commit of 100,050,000: DENY `spend_limit` (limit 100,000,000) | "Off plan or over the limit, it never runs, and the denial is recorded." |
+| 1:25 | 8–10: second MOCK reading for B2, commit 1,844,400, work order. 11: `user:engineer_b` approves: DENY `role` | "Only the owner can approve a reading." |
+| 1:45 | 12: owner rejects B2 ("reading disputed, re-inspect"). B2 budget released, B2 work order cancelled, B1 kept, inspection opened, re-plan excludes B2 | "One wrong fact, and only what depended on it is undone." |
+| 2:20 | 13: Stop. Status `rolled_back`, 0 committed lines | "Stop it, and everything it did is undone." |
+| 2:35 | Terminal: edit the seq 8 amount in Atlas, then `ledger.verify(sid)` returns `(False, 8)` | "The record shows exactly where it was altered." |
 
 ## Assumptions
 
