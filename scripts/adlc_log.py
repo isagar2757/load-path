@@ -3,8 +3,11 @@
 # requires-python = ">=3.11"
 # dependencies = ["pymongo>=4.7", "certifi"]
 # ///
-"""Shared ADLC log: sandbox db `adlc`, collection `log`. Convention: docs/adlc/shared-log.md.
+"""Shared ADLC state: sandbox db `adlc`. `items` = status (only source), `log` = event feed.
+Convention: docs/adlc/shared-log.md. `add` updates the item's status from the event; nothing to sync by hand.
 
+  adlc_log.py board [--owner WHO] [--all]   # active, blocked, READY (todo with deps done); --all = every item
+  adlc_log.py item ID [--owner O] [--title T] [--depends D ...] [--check C] [--status S] [--phase P] [--sha S]
   adlc_log.py add --item ID --event EVENT --summary TEXT [--to WHO] [--phase P] [--evidence T] [--sha S] [--files F ...]
   adlc_log.py tail [-n N] [--item ID]
   adlc_log.py inbox [-n N]     # events addressed to me (--to), newest first
@@ -22,6 +25,8 @@ EVENTS = ["task_start", "task_done", "decision", "blocker", "handoff", "test_run
           "review", "gate"]
 TOOLS = ["claude-code", "cursor", "git", "human"]
 PEOPLE = ["sagar", "arad"]
+OWNERS = PEOPLE + ["both"]
+STATUSES = ["todo", "active", "blocked", "done", "dropped"]
 ROOT = Path(__file__).resolve().parent.parent
 ITEM_RE = re.compile(r"^[a-z]+/([a-z]+[0-9]+[a-z]?)(?:-|$)")
 
@@ -52,11 +57,25 @@ def uri():
     return v
 
 
+_DB = None
+
+
+def adlc_db():
+    global _DB
+    if _DB is None:
+        import certifi
+        from pymongo import MongoClient
+        c = MongoClient(uri(), tlsCAFile=certifi.where(), serverSelectionTimeoutMS=8000)
+        _DB = c[os.environ.get("ADLC_DB", "adlc")]
+    return _DB
+
+
 def coll():
-    import certifi
-    from pymongo import MongoClient
-    c = MongoClient(uri(), tlsCAFile=certifi.where(), serverSelectionTimeoutMS=8000)
-    return c["adlc"]["log"]
+    return adlc_db()["log"]
+
+
+def items():
+    return adlc_db()["items"]
 
 
 def author(strict=True):
@@ -73,7 +92,47 @@ def add(doc):
     doc = {k: v for k, v in doc.items() if v not in (None, [], "")}
     doc["ts"] = datetime.now(timezone.utc)
     doc.setdefault("author", author())
-    return coll().insert_one(doc).inserted_id
+    _id = coll().insert_one(doc).inserted_id
+    apply_status(doc)
+    return _id
+
+
+def apply_status(e):
+    """Event -> item status. The only automatic writer of `items`; commits never change status."""
+    ev, upd = e.get("event"), {}
+    if ev == "task_start":
+        upd = {"status": "active", "blocked_on": None}
+    elif ev == "blocker":
+        upd = {"status": "blocked", "blocked_on": e.get("summary")}
+    elif ev in ("task_done", "gate"):
+        upd = {"status": "done", "blocked_on": None, "sha": e.get("sha") or e.get("evidence")}
+    if e.get("phase") and ev != "commit":
+        upd["phase"] = e["phase"]
+    if not upd:
+        return
+    upd |= {"updated": e["ts"], "by": e["author"]}
+    if items().update_one({"_id": e["item"]}, {"$set": upd}).matched_count == 0 and "status" in upd:
+        print(f"adlc_log: no item {e['item']} in adlc.items; status not changed", file=sys.stderr)
+
+
+def board(owner=None, show_all=False):
+    rows = list(items().find({}).sort("order", 1))
+    done = {r["_id"] for r in rows if r.get("status") in ("done", "dropped")}
+    print(f"{'ID':6} {'OWNER':5} {'STATUS':8} {'PHASE':6} {'DEPS':12} TITLE / CHECK")
+    for r in rows:
+        if owner and r.get("owner") not in (owner, "both"):
+            continue
+        st = r.get("status", "todo")
+        if st == "todo" and all(d in done for d in r.get("depends", [])):
+            st = "READY"
+        if not show_all and st not in ("active", "blocked", "READY"):
+            continue
+        extra = f" [{r['blocked_on']}]" if st == "blocked" and r.get("blocked_on") else ""
+        extra += f" ({r['sha']})" if r.get("sha") and st == "done" else ""
+        print(f"{r['_id']:6} {r.get('owner','?'):5} {st:8} {r.get('phase') or '-':6} "
+              f"{','.join(r.get('depends', [])) or '-':12} {r.get('title','')}{extra}")
+        if r.get("check") and st != "done":
+            print(f"{'':42} check: {r['check']}")
 
 
 def main():
@@ -90,6 +149,19 @@ def main():
     a.add_argument("--sha")
     a.add_argument("--files", nargs="*")
     a.add_argument("--to", choices=PEOPLE)
+    bd = s.add_parser("board")
+    bd.add_argument("--owner", choices=OWNERS)
+    bd.add_argument("--all", action="store_true")
+    it = s.add_parser("item")
+    it.add_argument("id")
+    it.add_argument("--owner", choices=OWNERS)
+    it.add_argument("--title")
+    it.add_argument("--depends", nargs="*")
+    it.add_argument("--check")
+    it.add_argument("--status", choices=STATUSES)
+    it.add_argument("--phase", choices=PHASES)
+    it.add_argument("--sha")
+    it.add_argument("--order", type=int)
     t = s.add_parser("tail")
     t.add_argument("-n", type=int, default=10)
     t.add_argument("--item")
@@ -106,6 +178,16 @@ def main():
     if x.cmd == "add":
         d = vars(x).copy(); d.pop("cmd")
         print("logged", add(d))
+    elif x.cmd == "board":
+        board(x.owner, x.all)
+    elif x.cmd == "item":
+        f = {k: v for k, v in vars(x).items() if k not in ("cmd", "id") and v is not None}
+        f |= {"updated": datetime.now(timezone.utc), "by": author()}
+        u = {"$set": f}
+        if "status" not in f:
+            u["$setOnInsert"] = {"status": "todo"}
+        r = items().update_one({"_id": x.id}, u, upsert=True)
+        print("created" if r.upserted_id else "updated", x.id)
     elif x.cmd in ("tail", "inbox"):
         if x.cmd == "inbox":
             q, title = {"to": author()}, f"# inbox for {author()} (latest first)"

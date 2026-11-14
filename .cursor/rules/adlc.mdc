@@ -3,7 +3,8 @@ description: Shared ADLC log, relay loop and workflow rules
 alwaysApply: true
 ---
 Follow AGENTS.md and the relay loop in docs/adlc/shared-log.md. You work for Arad; your lane is in AGENTS.md (lanes and ownership).
-At the start of every task run `uv run scripts/adlc_log.py inbox` and `uv run scripts/adlc_log.py tail -n 10`, and act on anything addressed to arad first.
+At the start of every task run `uv run scripts/adlc_log.py inbox` and `uv run scripts/adlc_log.py board --owner arad`, act on anything addressed to arad first, then take a READY item.
+Status lives only in Mongo `adlc.items`; logged events update it. Do not edit status in TRACKER.md.
 Log with `ADLC_TOOL=cursor uv run scripts/adlc_log.py add --item <ID> --phase <P> --event <E> --summary "<one line>" [--to sagar] [--evidence "<command output line>"]`:
-task_start, test_run (with evidence), task_done (with evidence), handoff --to sagar when a PR is ready, review --to sagar after reviewing his PR, question/blocker --to sagar.
+task_start, test_run (with evidence), task_done --sha <merge sha> after merge, handoff --to sagar when a PR is ready, review --to sagar after reviewing his PR, question/blocker --to sagar.
 Branch `feat/<id>-<slug>` (e.g. feat/a0-setup-db). Tests first. Never edit a file outside your lane; never change contracts.py without a logged decision. Never write secrets. No guessing: verify or write UNVERIFIED.

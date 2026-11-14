@@ -4,7 +4,7 @@
 ## Verify
 <!-- commands run and their result -->
 
-- [ ] Tracker updated
+- [ ] `task_start` logged; `task_done --sha` after merge
 - [ ] `docs/DEPENDENCIES.md` updated if a plugin, MCP, library, CLI, skill or workflow changed
 - [ ] `/code-review` run; `/security-review` if secrets, auth, PII or external input touched
 - [ ] Logged to the shared ADLC log
