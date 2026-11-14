@@ -11,7 +11,6 @@ IDs: `S*` Sagar (Claude Code) · `A*` Arad (Cursor) · `G*` stage gate (both) ·
 |---|---|---|---|---|---|---|
 | S0 | Sagar | LICENSE, pyproject, `contracts.py`, `db.py`, lanes in AGENTS.md | Verify | active | — | PR #3: CI green; 12 passed. Merge |
 | RELAY | Sagar | Relay loop: `--to`, `inbox`, `review`/`gate` events, item from branch, rules | Verify | active | S0 | `setup.sh` all ok; arad inbox shows a `--to arad` handoff |
-| A0 | Arad | `setup_db.py`: validators, indexes (`contracts.INDEXES`), seed 2 humans, agents, one active policy per Stage 2 tool | Verify | active | S0 | `uv run pytest tests/systems/test_setup_db.py -q` → 3 passed; setup twice ok; missing `kind` → 121 |
 | A1 | Arad | `web/server.py` SSE `/events`, `POST /sessions/{id}/stop`; `web/index.html` feed | Build | todo | S0 | event inserted by hand appears on the page < 2 s |
 
 ## Ground truth
@@ -51,11 +50,13 @@ IDs: `S*` Sagar (Claude Code) · `A*` Arad (Cursor) · `G*` stage gate (both) ·
 |---|---|---|
 
 ## Done
+- A0 setup_db validators, indexes, seed, PR #8 (340f298)
 - S1 ledger + gate with role check, PR #6 (2f9e290)
 - ADLC-2 branch workflow, hooks, CI, protected main, shared log client (a57fe7e)
 - ADLC-1 shared log, convention, Arad onboarding prompt (c1be56c)
 
 ## Log
+- 2026-11-14 — A0 merged (PR #8, CI green): `setup_db.py` + `tests/systems/test_setup_db.py`.
 - 2026-11-14 — S1 merged (PR #6, CI green, review waived by Sagar for the hackathon).
 - 2026-11-14 — S1: `core/ledger.py`, `core/gate.py`, `tests/core/` on `feat/s1-ledger-gate`. `uv run pytest -q`: 24 passed (Atlas); without `MONGODB_URI`: 11 passed, 13 skipped. `guarded_call` and ledger functions take an optional `db=` keyword (tests pass `capital_test`); default is `db.get_db()`. Checks other than `role` deny as `not implemented` until S2.
 - 2026-11-14 — S1 `/code-review` (medium): fixed post-execution ledger failure escaping `guarded_call`, `policy.roles` always enforced (beyond formulas §1: role binds even if not listed in `checks`), guarded `audit_head` update, `verify` flags tail truncation via `audit_head`, ledger stamps `ts` itself, driver error text kept out of `reason`. Deferred: unserialisable args deny without a ledger record; deny events written for unknown or ended sessions; `append` relies on the unique index from `setup_db.py` (A0). `uv run pytest -q`: 28 passed.
