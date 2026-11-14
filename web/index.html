@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>load-path</title>
+  <style>
+    :root { color-scheme: light; font-family: ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 1.5rem; max-width: 52rem; }
+    #feed { list-style: none; padding: 0; margin: 1rem 0; }
+    #feed li { padding: 0.5rem 0; border-bottom: 1px solid #ddd; font-family: ui-monospace, monospace; font-size: 0.85rem; white-space: pre-wrap; }
+    .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+    button { padding: 0.4rem 0.9rem; }
+    #status { color: #444; }
+  </style>
+</head>
+<body>
+  <h1>load-path</h1>
+  <p>Session feed and stop. Control surface only.</p>
+  <div class="row">
+    <label>session_id <input id="session" size="28" /></label>
+    <button type="button" id="stop">Stop</button>
+    <span id="status"></span>
+  </div>
+  <ul id="feed"></ul>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const sessionInput = document.getElementById("session");
+    const feed = document.getElementById("feed");
+    const statusEl = document.getElementById("status");
+    let source = null;
+
+    sessionInput.value = params.get("session_id") || "";
+
+    function connect() {
+      const sid = sessionInput.value.trim();
+      if (!sid) { statusEl.textContent = "set session_id"; return; }
+      if (source) source.close();
+      statusEl.textContent = "listening…";
+      source = new EventSource("/events?session_id=" + encodeURIComponent(sid));
+      source.onmessage = (ev) => {
+        const li = document.createElement("li");
+        li.textContent = ev.data;
+        feed.prepend(li);
+      };
+      source.onerror = () => { statusEl.textContent = "stream error / reconnecting"; };
+    }
+
+    sessionInput.addEventListener("change", connect);
+    if (sessionInput.value) connect();
+
+    document.getElementById("stop").addEventListener("click", async () => {
+      const sid = sessionInput.value.trim();
+      if (!sid) return;
+      const r = await fetch("/sessions/" + encodeURIComponent(sid) + "/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aborted_by: "user:owner_a" }),
+      });
+      statusEl.textContent = r.ok ? "abort_requested" : ("stop failed: " + r.status);
+    });
+  </script>
+</body>
+</html>
