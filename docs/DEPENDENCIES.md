@@ -29,6 +29,11 @@ Python 3.13.3. Versions and licences read from installed package metadata after 
 | pytest (dev) | 9.2.0 | MIT | Tests | both |
 | httpx (dev) | 0.28.1 | BSD-3-Clause | Starlette/FastAPI TestClient for web tests | Arad |
 
+## Models and APIs
+| Name | Version / model id | Purpose | Owner | Verified |
+|---|---|---|---|---|
+| Gemini API `generateContent` (HTTPS via stdlib `urllib.request`, key `LLM_API_KEY` in `.env`) | `gemini-3.5-flash-lite`, v1beta | LLM mode in `core/agents.py`: picks one code-built option, writes the rationale; JSON output mode | sagar | 2026-11-14: HTTP 200 with `responseMimeType: application/json`; `test_choose_live_picks_listed_option` passed |
+
 ## Tooling
 | Tool | Version | Purpose |
 |---|---|---|
