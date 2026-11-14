@@ -239,3 +239,21 @@ def test_failed_undo_ends_session_failed(world):
     assert tdb.inspection_requests.count_documents({}) == 0
     assert tdb.plans.count_documents({}) == 0
     assert ledger.verify(sid, db=tdb) == (True, None)
+
+
+def test_denied_replan_ends_session_failed(world):
+    tdb, sid = world
+    ids = _two_commitments(tdb, sid)
+    tdb.policies.update_one({"tool": "propose_plan", "status": "active"}, {"$set": {"roles": ["nobody"]}})
+    orch = orchestrator.Orchestrator(sid, db=tdb)
+    orch.start()
+    tdb.sessions.update_one({"_id": ObjectId(sid)}, {"$set": {"status": "reverting", "revert_for": "c1"}})
+    orch.watcher.join(timeout=10)
+
+    assert not orch.watcher.is_alive()
+    assert _status(tdb, sid) == "failed"
+    assert tdb.budget_ledger.find_one({"_id": ids["b1"]})["status"] == "released"
+    assert tdb.plans.count_documents({}) == 0
+    [ended] = [e for e in ledger.replay(sid, db=tdb) if e["type"] == "session_ended"]
+    assert ended["after"]["status"] == "failed" and ended["after"]["reason"].startswith("re-plan: role")
+    assert ledger.verify(sid, db=tdb) == (True, None)

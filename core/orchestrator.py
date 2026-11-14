@@ -3,8 +3,8 @@
 A turn loop asks each agent for its next step, queues it as a `tasks` document, claims it and lets the agent act
 through the gate.
 A watcher thread polls the session; on `abort_requested` it waits for the tool call in flight, then rolls back.
-On `reverting` it reverts the rejected condition's dependants and re-plans, then keeps watching; a failed undo
-ends the session `failed` (a person decides).
+On `reverting` it reverts the rejected condition's dependants and re-plans, then keeps watching; a failed undo or
+a denied or failed re-plan ends the session `failed` (a person decides).
 """
 import threading
 import time
@@ -57,9 +57,12 @@ class Orchestrator:
         return self.d.sessions.find_one_and_update(
             {"_id": self._oid, "status": old}, {"$set": {"status": new, "updated_at": datetime.now(UTC)}})
 
-    def _end(self, old: str, new: str, detail: dict) -> None:
-        if self._move(old, new) is not None:
-            self._event(SESSION_ENDED, after={"status": new, **detail})
+    def _end(self, old: str, new: str, detail: dict) -> bool:
+        """Move the session from `old` to `new` and record it; False when it was no longer `old`."""
+        if self._move(old, new) is None:
+            return False
+        self._event(SESSION_ENDED, after={"status": new, **detail})
+        return True
 
     def _watch(self) -> None:
         while (status := self._status()) in (RUNNING, REVERTING):
@@ -70,7 +73,10 @@ class Orchestrator:
                     if out["failed"]:  # an undo failed: stop here, a person decides
                         self._end(REVERTING, FAILED, {"compensated": out["compensated"], "failed": out["failed"]})
                         return
-                    plans.replan(self.sid, db=self.d)
+                    r = plans.replan(self.sid, db=self.d)
+                    # No new plan: do not run on the old one. A stop requested meanwhile is left to the rollback.
+                    if r.result is None and self._end(RUNNING, FAILED, {"reason": f"re-plan: {r.reason}"}):
+                        return
                 continue
             time.sleep(self.poll)
         if status != ABORT_REQUESTED:

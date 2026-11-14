@@ -84,7 +84,8 @@ def dependants(entries: list[dict], condition_id: str) -> list[dict]:
 def revert_dependants(session_id: str, condition_id: str, db=None) -> dict:
     """Compensate D(condition) newest first, resume the session, then open an inspection request.
 
-    Raises unless the session is `reverting`. A failed undo leaves it `reverting` with no request: a person decides.
+    Raises unless the session is `reverting`. A failed undo opens no request and leaves the status `reverting`;
+    the orchestrator then ends the session `failed`.
     """
     d = db if db is not None else dbmod.get_db()
     oid = ObjectId(session_id) if ObjectId.is_valid(session_id) else None
