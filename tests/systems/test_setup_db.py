@@ -1,4 +1,6 @@
 """A0: setup_db validators, indexes, seed. Plan Stage 0 check."""
+import uuid
+
 import pytest
 from pymongo.errors import WriteError
 
@@ -8,8 +10,8 @@ import setup_db
 
 needs_atlas = pytest.mark.skipif(not db.mongo_uri(required=False), reason="MONGODB_URI not set")
 
-# Own DB name so Sagar's capital_test runs cannot race Atlas drop/create.
-A0_TEST_DB = "capital_test_a0"
+# Unique per run: a fixed name raced between machines (one run's validator replaced the other's mid-test).
+A0_TEST_DB = f"{c.TEST_DB_NAME}_a0_{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture
