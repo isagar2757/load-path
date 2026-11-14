@@ -76,7 +76,7 @@ Versions are read from the installed packages (`uv sync`, 2026-11-14); see [docs
 | certifi | 2026.10.23 | CA bundle for TLS | MPL-2.0 |
 | pydantic | 2.14.3 | Shapes in `contracts.py` | MIT |
 | scipy | 1.18.1 | `scipy.optimize.milp` | BSD-3-Clause |
-| numpy | 2.5.4 | Arrays for the MILP (installed with scipy; not in DEPENDENCIES.md) | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
+| numpy | 2.5.4 | Arrays for the MILP (installed with scipy) | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
 | scikit-learn | 1.9.1 | Declared in `pyproject.toml`; no code imports it on this branch | BSD-3-Clause |
 | fastapi | 0.162.7 | Web server | MIT |
 | uvicorn | 0.54.0 | ASGI server | BSD-3-Clause |
