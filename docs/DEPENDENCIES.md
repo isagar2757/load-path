@@ -8,6 +8,12 @@ One row per item. Update in the same commit that adds, changes or removes it. Ve
 | superpowers@anthropic-plugin-directory | 7.0.2 | Phase skills: brainstorming, plans, TDD, review, debugging | 2026-11-14 `claude plugin list` |
 | mongodb-self-managed-mcp@anthropic-plugin-directory | 1.2.1 | MongoDB MCP server and skills; reads `MDB_MCP_CONNECTION_STRING` | 2026-11-14 `claude plugin list` |
 
+## Container images
+| Name | Tag | Purpose | Owner | Verified |
+|---|---|---|---|---|
+| python | 3.13-slim | Base image for `Dockerfile` | sagar | 2026-11-14 `docker build -t load-path .` on Docker 29.8.2 |
+| ghcr.io/astral-sh/uv | 0.9.5 | `uv` binary copied into the image | sagar | 2026-11-14 same build |
+
 ## MCP servers
 | Server | Used for | Owner | Verified |
 |---|---|---|---|

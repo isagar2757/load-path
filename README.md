@@ -52,6 +52,25 @@ uv run pytest -q
 - `run_demo.py` flags: `--reset` clears the run collections and re-runs `setup_db`; `--auto` performs the approve, reject and stop actions without the page; `--llm` turns on LLM mode; `--wait SECONDS` (default 8) is the pause to open the page; `--step SECONDS` (default 1.5) is the pause between steps. It needs at least three assets in region `r1`. `--reset` deletes every session in the database it runs on: set `CAPITAL_DB=capital_<name>` in `.env` to use your own database, then run `setup_db.py` and `systems.assets` for it. Stop at any point ends the run with a rollback.
 - Tests that need Atlas skip when `MONGODB_URI` is unset. Each test uses its own `capital_test_<suffix>` database and drops it.
 
+## Run in a container
+
+The image holds the code and dependencies only; data stays in the Atlas sandbox and secrets come from `--env-file` at run time.
+
+```bash
+docker build -t load-path .
+docker run -d --name lp-web -p 8000:8000 --env-file .env -e CAPITAL_DB=capital_container load-path   # the page
+docker run --rm --env-file .env -e CAPITAL_DB=capital_container load-path uv run python setup_db.py
+docker run --rm --env-file .env -e CAPITAL_DB=capital_container \
+  -v ~/hackathon-data/ontario-bridge-conditions:/data:ro \
+  -e ONTARIO_BRIDGES_PATH=/data/bridge_condition_open_data_2020_en.csv \
+  load-path uv run python -m systems.assets
+docker run --rm --env-file .env -e CAPITAL_DB=capital_container load-path \
+  uv run python run_demo.py --reset --auto --wait 0 --step 0
+```
+
+- `--env-file` keeps quotes literally: values in `.env` must be unquoted (`MONGODB_URI=mongodb+srv://...`).
+- The container's public egress IP must be on the Atlas access list. It can differ from the host's (for example host on IPv6, container on IPv4); check it with `docker run --rm load-path python -c "import urllib.request;print(urllib.request.urlopen('https://api.ipify.org').read())"`.
+
 ## Assumptions
 
 Treatment gains and costs are assumptions, not sourced figures (`TREATMENTS` in `engine/plan.py`). Cost = rate × deck area. Benefit = rating gain × deck area, with the gain capped at 100 − current BCI; no traffic weight.
