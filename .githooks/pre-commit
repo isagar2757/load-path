@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Checks: branch, secrets, docs sync, doc fluff. Bypass only with: git commit --no-verify
+set -u
+fail=0
+err() { echo "pre-commit: $*" >&2; fail=1; }
+
+branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+if [[ "$branch" == "main" && "${ALLOW_MAIN:-0}" != "1" ]]; then
+  err "direct commit on main blocked. Branch first (git switch -c <type>/<slug>)."
+fi
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[[ -z "$staged" ]] && exit $fail
+
+# 1. Secrets: scan added lines only.
+added=$(git diff --cached -U0 --diff-filter=ACM -- . ':(exclude).env.example' ':(exclude).githooks/pre-commit' \
+  | grep -E '^\+[^+]' || true)
+patterns='mongodb(\+srv)?://[^:/[:space:]<]+:[^@<[:space:]$]+@|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(password|passwd|secret|api[_-]?key|token)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9/+_.-]{12,}'
+hits=$(echo "$added" | grep -i -E "$patterns" || true)
+[[ -n "$hits" ]] && err "possible secret in staged lines:" && echo "$hits" | cut -c1-100 >&2
+if git diff --cached --name-only | grep -E '(^|/)\.env($|\.)' | grep -v -E '\.env\.example$' | grep -q .; then
+  err ".env file staged. Only .env.example may be committed."
+fi
+
+# 2. Docs sync: a dependency/plugin/MCP change must update docs/DEPENDENCIES.md in the same commit.
+manifests='^(pyproject\.toml|uv\.lock|requirements[^/]*\.txt|package\.json|package-lock\.json|pnpm-lock\.yaml|\.mcp\.json|\.cursor/mcp\.json|\.cursor/rules/.*|\.claude/settings(\.local)?\.json|\.claude/plugins/.*)$'
+if echo "$staged" | grep -E -q "$manifests" && ! echo "$staged" | grep -q '^docs/DEPENDENCIES\.md$'; then
+  err "dependency/plugin/MCP file changed but docs/DEPENDENCIES.md is not staged. Record name, version, purpose, owner."
+fi
+
+# 3. Doc fluff: staged markdown must not contain filler phrases.
+fluff='\b(delve|seamless(ly)?|robust (solution|framework)|cutting-edge|game-changer|state-of-the-art|in today.s (fast-paced )?world|it.s important to note|leverag(e|ing)|comprehensive (guide|solution)|unlock the (power|potential))\b'
+for f in $(echo "$staged" | grep -E '\.md$' | grep -v -E '^(docs/adlc/prompts/)'); do
+  m=$(git show ":$f" | grep -n -i -E "$fluff" | head -3 || true)
+  [[ -n "$m" ]] && err "filler phrase in $f:" && echo "$m" >&2
+done
+
+exit $fail

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Block direct pushes to main (use a branch + PR); run tests when they exist.
+while read -r _ _ remote_ref _; do
+  if [[ "$remote_ref" == "refs/heads/main" && "${ALLOW_MAIN:-0}" != "1" ]]; then
+    echo "pre-push: pushing to main blocked. Push a branch and open a PR." >&2; exit 1
+  fi
+done
+if [[ -d tests ]] && command -v uv >/dev/null; then
+  uv run --quiet pytest -q || { echo "pre-push: tests failed." >&2; exit 1; }
+fi

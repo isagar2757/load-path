@@ -15,7 +15,7 @@ Status: `todo` · `active` · `blocked(<on what>)` · `done(<sha>)`.
 ## Backlog
 | ID | Item | Phase | Status | Depends on | Links |
 |---|---|---|---|---|---|
-| ADLC-2 | Branch workflow, Conventional Commits, pre-commit hooks (secret scan, lint, review) | Plan | todo | ADLC-1 | |
+| ADLC-2 | Branch workflow, Conventional Commits, git hooks, agent rules, dependency doc | Verify | active | ADLC-1 | [AGENTS.md](AGENTS.md) [deps](docs/DEPENDENCIES.md) |
 
 ## Open decisions
 | ADR | Question | Status |
