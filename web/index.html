@@ -11,16 +11,21 @@
     .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
     button { padding: 0.4rem 0.9rem; }
     #status { color: #444; }
+    #conditions { list-style: none; padding: 0; }
+    #conditions li { padding: 0.4rem 0; border-bottom: 1px solid #ddd; }
   </style>
 </head>
 <body>
   <h1>load-path</h1>
-  <p>Session feed and stop. Control surface only.</p>
+  <p>Session feed, stop, and condition approval. Control surface only.</p>
   <div class="row">
     <label>session_id <input id="session" size="28" /></label>
     <button type="button" id="stop">Stop</button>
     <span id="status"></span>
   </div>
+  <h2>Pending conditions</h2>
+  <ul id="conditions"></ul>
+  <h2>Feed</h2>
   <ul id="feed"></ul>
   <script>
     const params = new URLSearchParams(location.search);
@@ -41,12 +46,56 @@
         const li = document.createElement("li");
         li.textContent = ev.data;
         feed.prepend(li);
+        if (JSON.parse(ev.data).tool?.endsWith("_condition")) loadConditions();
       };
       source.onerror = () => { statusEl.textContent = "stream error / reconnecting"; };
     }
 
-    sessionInput.addEventListener("change", connect);
-    if (sessionInput.value) connect();
+    const conditionsEl = document.getElementById("conditions");
+    const ACTOR = "user:owner_a";
+
+    async function decide(action, body) {
+      const sid = sessionInput.value.trim();
+      const r = await fetch("/sessions/" + encodeURIComponent(sid) + "/conditions/" + action, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actor_id: ACTOR, ...body }),
+      });
+      const out = await r.json();
+      statusEl.textContent = r.ok ? (action + " ok: " + body.condition_id)
+        : (action + " refused (" + r.status + "): " + JSON.stringify(out.detail));
+      loadConditions();
+    }
+
+    async function loadConditions() {
+      const sid = sessionInput.value.trim();
+      if (!sid) return;
+      const r = await fetch("/sessions/" + encodeURIComponent(sid) + "/conditions");
+      conditionsEl.replaceChildren();
+      if (!r.ok) { statusEl.textContent = "conditions failed: " + r.status; return; }
+      for (const c of await r.json()) {
+        const li = document.createElement("li");
+        li.className = "row";
+        const label = document.createElement("span");
+        label.textContent = c.asset_id + " · " + c.year + " · rating " + c.rating;
+        const approve = document.createElement("button");
+        approve.type = "button";
+        approve.textContent = "Approve";
+        approve.addEventListener("click", () => decide("approve", { condition_id: c._id }));
+        const reason = document.createElement("input");
+        reason.placeholder = "reason";
+        const reject = document.createElement("button");
+        reject.type = "button";
+        reject.textContent = "Reject";
+        reject.addEventListener("click", () => decide("reject", { condition_id: c._id, reason: reason.value }));
+        li.append(label, approve, reason, reject);
+        conditionsEl.append(li);
+      }
+    }
+
+    function start() { connect(); loadConditions(); }
+    sessionInput.addEventListener("change", start);
+    if (sessionInput.value) start();
 
     document.getElementById("stop").addEventListener("click", async () => {
       const sid = sessionInput.value.trim();
