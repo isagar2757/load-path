@@ -22,6 +22,7 @@ Python 3.13.3. Versions and licences read from installed package metadata after 
 | certifi | 2026.10.23 | MPL-2.0 | CA bundle passed as `tlsCAFile` | both |
 | pydantic | 2.14.3 | MIT | Shapes in `contracts.py` | both |
 | scipy | 1.18.1 | BSD-3-Clause (read from `LICENSE.txt`; bundled components list their own licences there) | `scipy.optimize.milp` (HiGHS) | Arad |
+| numpy | 2.5.4 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | Arrays for the MILP in `engine/plan.py` (installed with scipy) | Arad |
 | scikit-learn | 1.9.1 | BSD-3-Clause | Random forest (Stage 5) | Arad |
 | fastapi | 0.162.7 | MIT | Web server, SSE feed | Arad |
 | uvicorn | 0.54.0 | BSD-3-Clause | ASGI server | Arad |
