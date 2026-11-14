@@ -126,6 +126,7 @@
     #caption { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--ink); color: #fff; padding: 0.7rem 1.25rem; border-top: 4px solid #e8590c; }
     body.present #caption { display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 1.5rem; align-items: center; }
     body.present main { padding-bottom: 7.5rem; }
+    body.present li.exec { display: none; }
     #cap1 { font-size: 1.45rem; font-weight: 700; }
     #cap2 { font-size: 1.1rem; color: #c7d3da; grid-column: 1; }
     #cap-ctl { grid-row: 1 / span 2; grid-column: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; font-size: 0.9rem; color: #c7d3da; }
@@ -338,7 +339,7 @@
         return li;
       }
       if (ev.type === "executed") {
-        li.classList.add("quiet");
+        li.classList.add("quiet", "exec");
         const p = el("div", "Carried out" + (ev.after?.produced ? ", record #" + shortKey(ev.after.produced) : ""), "line1");
         li.append(el("span", "done", "badge sys"), p);
         return li;
