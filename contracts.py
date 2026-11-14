@@ -41,7 +41,9 @@ AGENT_IDS = ("agent:intake", "agent:planner", "agent:programming", "agent:workor
 #   undo(db, undo_args: dict) -> dict     idempotent
 
 # Enumerations
-CheckName = Literal["role", "spend_limit", "envelope", "jurisdiction", "has_commitment", "in_approved_plan"]
+CheckName = Literal[
+    "role", "spend_limit", "envelope", "jurisdiction", "has_commitment", "in_approved_plan", "has_reason",
+]
 CHECK_NAMES: tuple[str, ...] = CheckName.__args__
 SessionStatus = Literal[
     "running", "reverting", "abort_requested", "rolling_back", "rolled_back", "completed", "failed",

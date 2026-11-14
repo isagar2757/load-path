@@ -56,7 +56,7 @@ def test_session_status_values():
 
 def test_policy_check_names():
     assert set(c.CHECK_NAMES) == {
-        "role", "spend_limit", "envelope", "jurisdiction", "has_commitment", "in_approved_plan",
+        "role", "spend_limit", "envelope", "jurisdiction", "has_commitment", "in_approved_plan", "has_reason",
     }
     with pytest.raises(ValidationError):
         c.PolicyCheck(name="vibes", params={})
