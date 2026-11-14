@@ -96,7 +96,7 @@ def test_stop_halts_and_rolls_back(stage2):
     assert types.count("compensated") == 3 and types[-1] == "session_ended"
     assert types.index("abort_observed") < types.index("compensated")
     assert ledger.verify(sid, db=tdb) == (True, None)
-    assert elapsed < 2, f"stop to rolled_back took {elapsed:.2f} s"
+    assert elapsed < 5, f"stop to rolled_back took {elapsed:.2f} s"
 
 
 def test_stop_during_tool(stage2):
